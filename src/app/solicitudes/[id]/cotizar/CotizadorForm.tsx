@@ -123,8 +123,8 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto overscroll-x-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <table className="w-full text-sm" style={{ minWidth: '720px' }}>
             <thead>
               <tr className="bg-gray-50/60 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 <th className="text-left px-4 py-3 w-8">#</th>
@@ -301,7 +301,7 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
       </div>
 
       {/* Condiciones */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 grid grid-cols-2 gap-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Vigencia (días)</label>
           <input
@@ -312,7 +312,7 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
             onChange={e => setVigencia(Number(e.target.value))}
           />
         </div>
-        <div className="col-span-2">
+        <div className="md:col-span-2">
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Condiciones comerciales</label>
           <textarea
             rows={3}
@@ -321,7 +321,7 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
             onChange={e => setCondiciones(e.target.value)}
           />
         </div>
-        <div className="col-span-2">
+        <div className="md:col-span-2">
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Notas internas</label>
           <textarea
             rows={2}

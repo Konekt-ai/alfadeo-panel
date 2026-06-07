@@ -40,8 +40,8 @@ export default async function SolicitudesPage({
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 md:p-8">
+      <div className="flex items-center justify-between mb-6 md:mb-8">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Solicitudes</h1>
           <p className="text-sm text-gray-400 mt-0.5">
@@ -50,12 +50,13 @@ export default async function SolicitudesPage({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-6 space-y-3">
+      {/* Filtros */}
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 md:px-5 md:py-4 mb-5 space-y-3">
         <div className="flex items-center gap-1.5 text-gray-400">
           <FunnelIcon className="w-3.5 h-3.5" />
           <span className="text-xs font-semibold uppercase tracking-wider">Filtros</span>
         </div>
-        <div className="flex flex-wrap gap-y-3 gap-x-6">
+        <div className="space-y-3 md:flex md:space-y-0 md:flex-wrap md:gap-y-3 md:gap-x-6">
           <FilterGroup label="Estado">
             <Chip href="/solicitudes" active={!params.estado}>Todos</Chip>
             {ESTADOS.map(e => (
@@ -64,13 +65,13 @@ export default async function SolicitudesPage({
               </Chip>
             ))}
           </FilterGroup>
-          <div className="w-px bg-gray-100 self-stretch" />
+          <div className="hidden md:block w-px bg-gray-100 self-stretch" />
           <FilterGroup label="Canal">
             <Chip href={buildUrl({ canal: undefined })} active={!params.canal}>Todos</Chip>
             <Chip href={buildUrl({ canal: 'whatsapp' })} active={params.canal === 'whatsapp'}>WhatsApp</Chip>
             <Chip href={buildUrl({ canal: 'web' })} active={params.canal === 'web'}>Web</Chip>
           </FilterGroup>
-          <div className="w-px bg-gray-100 self-stretch" />
+          <div className="hidden md:block w-px bg-gray-100 self-stretch" />
           <FilterGroup label="Atención">
             <Chip href={buildUrl({ humano: params.humano === '1' ? undefined : '1' })} active={params.humano === '1'}>
               Requiere humano
@@ -80,12 +81,13 @@ export default async function SolicitudesPage({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-5 text-sm">
           Error al cargar: {error.message}
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Tabla — desktop */}
+      <div className="hidden md:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">
@@ -152,6 +154,56 @@ export default async function SolicitudesPage({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Tarjetas — móvil */}
+      <div className="md:hidden space-y-3">
+        {(!solicitudes || solicitudes.length === 0) && (
+          <div className="text-center py-16 text-gray-300 text-sm bg-white border border-gray-200 rounded-xl">
+            No hay solicitudes con los filtros seleccionados.
+          </div>
+        )}
+        {solicitudes?.map((s) => {
+          const sol = s as unknown as Solicitud
+          return (
+            <Link
+              key={sol.id}
+              href={`/solicitudes/${sol.id}`}
+              className="block bg-white border border-gray-200 rounded-xl p-4 active:bg-gray-50"
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-semibold text-[#003366]">#{sol.folio}</span>
+                  {sol.requiere_humano && (
+                    <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${estadoColor(sol.estado)}`}>
+                    {estadoLabel(sol.estado)}
+                  </span>
+                  <ChevronRightIcon className="w-4 h-4 text-gray-300" />
+                </div>
+              </div>
+              <div className="font-medium text-gray-900 text-sm">{sol.clientes?.nombre ?? '—'}</div>
+              {sol.clientes?.empresa && (
+                <div className="text-xs text-gray-400 mt-0.5">{sol.clientes.empresa}</div>
+              )}
+              <div className="flex items-center gap-3 mt-3 flex-wrap">
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                  {canalLabel(sol.canal)}
+                </span>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${urgenciaColor(sol.urgencia)}`}>
+                  {sol.urgencia}
+                </span>
+                {sol.ciudad_entrega && (
+                  <span className="text-xs text-gray-400">{sol.ciudad_entrega}</span>
+                )}
+                <span className="text-xs text-gray-300 ml-auto">{formatDate(sol.created_at)}</span>
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )

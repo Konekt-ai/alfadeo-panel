@@ -107,7 +107,7 @@ export default async function CotizadorPage({ params }: { params: Promise<{ id: 
   if (!sol) return notFound()
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 md:p-8 max-w-5xl">
       <Link href={`/solicitudes/${id}`} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6">
         <ArrowLeftIcon className="w-3.5 h-3.5" /> Solicitud #{sol.folio}
       </Link>
