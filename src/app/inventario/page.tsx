@@ -109,7 +109,8 @@ export default async function InventarioPage({
       )}
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Producto</th>
@@ -154,7 +155,7 @@ export default async function InventarioPage({
                   </td>
                   <td className="px-5 py-4">
                     <Link href={`/inventario/${r.id}`}
-                      className="text-xs font-medium text-[#003366] opacity-0 group-hover:opacity-100 transition-opacity hover:underline">
+                      className="text-xs font-medium text-[#003366] md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:underline">
                       Editar
                     </Link>
                   </td>
@@ -163,6 +164,7 @@ export default async function InventarioPage({
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )
