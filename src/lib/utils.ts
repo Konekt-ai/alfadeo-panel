@@ -42,7 +42,7 @@ export function tipoClienteLabel(t: TipoCliente | null) {
 }
 
 export function canalLabel(c: CanalOrigen) {
-  return c === 'whatsapp' ? '📱 WhatsApp' : '🌐 Web'
+  return c === 'whatsapp' ? 'WhatsApp' : 'Web'
 }
 
 export function formatDate(iso: string) {

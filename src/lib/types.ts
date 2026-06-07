@@ -23,6 +23,47 @@ export interface SolicitudItem {
   nota: string | null
 }
 
+export interface Producto {
+  id: string
+  nombre: string
+  laboratorio: string | null
+  presentacion: string | null
+  unidad: string | null
+  precio_base: number | null
+  iva_exento: boolean
+  activo: boolean
+}
+
+export interface CotizacionItem {
+  id: string
+  producto_id: string | null
+  descripcion: string
+  cantidad: number
+  unidad: string | null
+  precio_unitario: number
+  iva_exento: boolean
+  subtotal: number
+  sujeto_confirmacion: boolean
+  posicion: number
+}
+
+export interface Cotizacion {
+  id: string
+  folio: string
+  solicitud_id: string | null
+  cliente_id: string | null
+  estado: string
+  vigencia_dias: number
+  condiciones: string | null
+  notas: string | null
+  subtotal: number
+  iva: number
+  total: number
+  pdf_url: string | null
+  created_at: string
+  cotizacion_items: CotizacionItem[]
+}
+
 export interface Solicitud {
   id: string
   folio: number

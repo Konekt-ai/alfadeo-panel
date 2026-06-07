@@ -2,8 +2,13 @@ import { supabase } from '@/lib/supabase'
 import type { Solicitud, EstadoSolicitud } from '@/lib/types'
 import { estadoLabel, estadoColor, urgenciaColor, canalLabel, formatDate } from '@/lib/utils'
 import Link from 'next/link'
+import { ExclamationTriangleIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
+import { FunnelIcon } from '@heroicons/react/24/outline'
 
-const ESTADOS: EstadoSolicitud[] = ['nueva', 'en_revision', 'cotizada', 'enviada', 'aceptada', 'rechazada', 'facturada', 'cancelada']
+const ESTADOS: EstadoSolicitud[] = [
+  'nueva', 'en_revision', 'cotizada', 'enviada',
+  'aceptada', 'rechazada', 'facturada', 'cancelada',
+]
 
 export const dynamic = 'force-dynamic'
 
@@ -28,112 +33,118 @@ export default async function SolicitudesPage({
 
   const { data: solicitudes, error } = await query
 
+  const buildUrl = (overrides: Record<string, string | undefined>) => {
+    const p = { estado: params.estado, canal: params.canal, humano: params.humano, ...overrides }
+    const qs = Object.entries(p).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
+    return `/solicitudes${qs ? `?${qs}` : ''}`
+  }
+
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Solicitudes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {solicitudes?.length ?? 0} solicitudes encontradas
+          <h1 className="text-xl font-semibold text-gray-900">Solicitudes</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {solicitudes?.length ?? 0} {(solicitudes?.length ?? 0) === 1 ? 'registro' : 'registros'}
           </p>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3">
-        <FilterGroup label="Estado">
-          <FilterLink href="/solicitudes" active={!params.estado} label="Todas" />
-          {ESTADOS.map(e => (
-            <FilterLink
-              key={e}
-              href={`/solicitudes?estado=${e}${params.canal ? `&canal=${params.canal}` : ''}${params.humano ? `&humano=${params.humano}` : ''}`}
-              active={params.estado === e}
-              label={estadoLabel(e)}
-            />
-          ))}
-        </FilterGroup>
-
-        <div className="w-px bg-gray-200 self-stretch" />
-
-        <FilterGroup label="Canal">
-          <FilterLink href={`/solicitudes${params.estado ? `?estado=${params.estado}` : ''}`} active={!params.canal} label="Todos" />
-          <FilterLink href={`/solicitudes?canal=whatsapp${params.estado ? `&estado=${params.estado}` : ''}`} active={params.canal === 'whatsapp'} label="WhatsApp" />
-          <FilterLink href={`/solicitudes?canal=web${params.estado ? `&estado=${params.estado}` : ''}`} active={params.canal === 'web'} label="Web" />
-        </FilterGroup>
-
-        <div className="w-px bg-gray-200 self-stretch" />
-
-        <FilterGroup label="Atención">
-          <FilterLink
-            href={`/solicitudes?humano=1${params.estado ? `&estado=${params.estado}` : ''}${params.canal ? `&canal=${params.canal}` : ''}`}
-            active={params.humano === '1'}
-            label="🚨 Requiere humano"
-          />
-        </FilterGroup>
+      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-6 space-y-3">
+        <div className="flex items-center gap-1.5 text-gray-400">
+          <FunnelIcon className="w-3.5 h-3.5" />
+          <span className="text-xs font-semibold uppercase tracking-wider">Filtros</span>
+        </div>
+        <div className="flex flex-wrap gap-y-3 gap-x-6">
+          <FilterGroup label="Estado">
+            <Chip href="/solicitudes" active={!params.estado}>Todos</Chip>
+            {ESTADOS.map(e => (
+              <Chip key={e} href={buildUrl({ estado: e })} active={params.estado === e}>
+                {estadoLabel(e)}
+              </Chip>
+            ))}
+          </FilterGroup>
+          <div className="w-px bg-gray-100 self-stretch" />
+          <FilterGroup label="Canal">
+            <Chip href={buildUrl({ canal: undefined })} active={!params.canal}>Todos</Chip>
+            <Chip href={buildUrl({ canal: 'whatsapp' })} active={params.canal === 'whatsapp'}>WhatsApp</Chip>
+            <Chip href={buildUrl({ canal: 'web' })} active={params.canal === 'web'}>Web</Chip>
+          </FilterGroup>
+          <div className="w-px bg-gray-100 self-stretch" />
+          <FilterGroup label="Atención">
+            <Chip href={buildUrl({ humano: params.humano === '1' ? undefined : '1' })} active={params.humano === '1'}>
+              Requiere humano
+            </Chip>
+          </FilterGroup>
+        </div>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-5 text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm">
           Error al cargar: {error.message}
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Folio</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Canal</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Urgencia</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Ciudad entrega</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-              <th className="px-4 py-3" />
+            <tr className="border-b border-gray-100">
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Folio</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Cliente</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Canal</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Estado</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Urgencia</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Ciudad entrega</th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Fecha</th>
+              <th className="px-5 py-3.5" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-50">
             {(!solicitudes || solicitudes.length === 0) && (
               <tr>
-                <td colSpan={8} className="text-center py-16 text-gray-400">
-                  No hay solicitudes con estos filtros.
+                <td colSpan={8} className="text-center py-20 text-gray-300 text-sm">
+                  No hay solicitudes con los filtros seleccionados.
                 </td>
               </tr>
             )}
             {solicitudes?.map((s) => {
               const sol = s as unknown as Solicitud
               return (
-                <tr key={sol.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-medium text-[#003366]">
-                    #{sol.folio}
-                    {sol.requiere_humano && <span className="ml-1.5 text-red-500" title="Requiere atención humana">🚨</span>}
+                <tr key={sol.id} className="hover:bg-gray-50/60 transition-colors group">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-[#003366]">#{sol.folio}</span>
+                      {sol.requiere_humano && (
+                        <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" title="Requiere atención humana" />
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-4">
                     <div className="font-medium text-gray-900">{sol.clientes?.nombre ?? '—'}</div>
-                    <div className="text-gray-500 text-xs">{sol.clientes?.empresa ?? ''}</div>
+                    {sol.clientes?.empresa && (
+                      <div className="text-xs text-gray-400 mt-0.5">{sol.clientes.empresa}</div>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{canalLabel(sol.canal)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${estadoColor(sol.estado)}`}>
+                  <td className="px-5 py-4">
+                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                      {canalLabel(sol.canal)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${estadoColor(sol.estado)}`}>
                       {estadoLabel(sol.estado)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${urgenciaColor(sol.urgencia)}`}>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${urgenciaColor(sol.urgencia)}`}>
                       {sol.urgencia}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{sol.ciudad_entrega ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(sol.created_at)}</td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/solicitudes/${sol.id}`}
-                      className="text-[#003366] hover:underline font-medium text-xs"
-                    >
-                      Ver →
+                  <td className="px-5 py-4 text-gray-500 text-sm">{sol.ciudad_entrega ?? '—'}</td>
+                  <td className="px-5 py-4 text-gray-400 text-xs whitespace-nowrap">{formatDate(sol.created_at)}</td>
+                  <td className="px-5 py-4">
+                    <Link href={`/solicitudes/${sol.id}`}>
+                      <ChevronRightIcon className="w-4 h-4 text-gray-300 group-hover:text-[#003366] transition-colors" />
                     </Link>
                   </td>
                 </tr>
@@ -148,24 +159,24 @@ export default async function SolicitudesPage({
 
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}:</span>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-xs text-gray-400 mr-1">{label}:</span>
       {children}
     </div>
   )
 }
 
-function FilterLink({ href, active, label }: { href: string; active: boolean; label: string }) {
+function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
     <a
       href={href}
-      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
         active
-          ? 'bg-[#003366] text-white'
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          ? 'bg-[#003366] text-white border-[#003366]'
+          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
       }`}
     >
-      {label}
+      {children}
     </a>
   )
 }
