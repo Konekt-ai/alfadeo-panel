@@ -234,7 +234,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     </Document>
   )
 
-  return new Response(pdf, {
+  return new Response(new Uint8Array(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${cot.folio}.pdf"`,
