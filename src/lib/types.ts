@@ -29,8 +29,75 @@ export interface Producto {
   laboratorio: string | null
   presentacion: string | null
   unidad: string | null
+  categoria: string | null
   precio_base: number | null
   iva_exento: boolean
+  activo: boolean
+}
+
+export type OrigenCompra = 'inventario' | 'proveedor'
+
+// Una fila de v_opciones_compra: de dónde se puede surtir un producto.
+export interface OpcionCompra {
+  producto_id: string
+  origen: OrigenCompra
+  proveedor_id: string | null
+  fuente_nombre: string
+  costo: number | null
+  existencia: number | null
+  en_stock: boolean | null
+  caducidad: string | null
+  moq: number | null
+  fecha_precio: string
+  match_score: number | null
+}
+
+export type MetodoIngesta = 'manual' | 'import' | 'scrape' | 'api'
+export type EstadoMatch = 'pendiente' | 'auto' | 'confirmado' | 'descartado'
+
+export interface Proveedor {
+  id: string
+  nombre: string
+  slug: string
+  metodo_ingesta: MetodoIngesta
+  portal_url: string | null
+  credencial_ref: string | null
+  moneda: string | null
+  dias_entrega: number | null
+  activo: boolean
+  notas: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProveedorPrecio {
+  id: string
+  proveedor_id: string
+  sku_proveedor: string | null
+  codigo_barras: string | null
+  nombre_prov: string
+  laboratorio: string | null
+  presentacion: string | null
+  precio: number | null
+  existencia: number | null
+  en_stock: boolean | null
+  caducidad: string | null
+  moq: number | null
+  origen: string
+  fecha_precio: string
+  producto_id: string | null
+  match_estado: EstadoMatch
+  match_score: number | null
+}
+
+// Regla de margen (tabla margenes). Scope null = aplica a todo.
+export interface Margen {
+  id: string
+  tipo_cliente: TipoCliente | null
+  categoria: string | null
+  producto_id: string | null
+  margen_pct: number
+  prioridad: number
   activo: boolean
 }
 

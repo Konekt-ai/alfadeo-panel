@@ -6,12 +6,14 @@ import {
   ClipboardDocumentListIcon,
   UsersIcon,
   ArchiveBoxIcon,
+  TruckIcon,
 } from '@heroicons/react/24/outline'
 
 const nav = [
   { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardDocumentListIcon },
   { href: '/clientes', label: 'Clientes', icon: UsersIcon },
   { href: '/inventario', label: 'Inventario', icon: ArchiveBoxIcon },
+  { href: '/proveedores', label: 'Proveedores', icon: TruckIcon },
 ]
 
 export function Header() {

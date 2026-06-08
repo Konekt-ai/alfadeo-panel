@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useCallback, useTransition } from 'react'
-import { PlusIcon, TrashIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
-import type { Producto, SolicitudItem } from '@/lib/types'
+import { PlusIcon, TrashIcon, MagnifyingGlassIcon, CheckBadgeIcon } from '@heroicons/react/20/solid'
+import type { Producto, SolicitudItem, OpcionCompra, Margen, TipoCliente, OrigenCompra } from '@/lib/types'
+import { sugerir, precioConMargen } from '@/lib/cotizador'
 
 interface LineaItem {
   key: number
@@ -13,17 +14,34 @@ interface LineaItem {
   precio_unitario: number
   iva_exento: boolean
   sujeto_confirmacion: boolean
+  // Cotizador inteligente:
+  opciones: OpcionCompra[]
+  proveedor_id: string
+  origen_compra: OrigenCompra | ''
+  costo: number
+  margen_pct: number
 }
 
 interface Props {
   solicitudId: string
   clienteId: string
+  tipoCliente: TipoCliente | null
   items: SolicitudItem[]
   productos: Producto[]
+  opcionesPorProducto: Record<string, OpcionCompra[]>
+  margenes: Margen[]
   action: (form: FormData) => Promise<void>
 }
 
 let nextKey = 1
+
+const baseLinea = {
+  opciones: [] as OpcionCompra[],
+  proveedor_id: '',
+  origen_compra: '' as OrigenCompra | '',
+  costo: 0,
+  margen_pct: 0,
+}
 
 function lineaDesdeItem(item: SolicitudItem): LineaItem {
   return {
@@ -35,6 +53,7 @@ function lineaDesdeItem(item: SolicitudItem): LineaItem {
     precio_unitario: 0,
     iva_exento: false,
     sujeto_confirmacion: true,
+    ...baseLinea,
   }
 }
 
@@ -48,16 +67,25 @@ function lineaVacia(): LineaItem {
     precio_unitario: 0,
     iva_exento: false,
     sujeto_confirmacion: true,
+    ...baseLinea,
   }
 }
 
 const fmt = (n: number) =>
   n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
 
+const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`
+
+const fmtCad = (iso: string | null) =>
+  iso ? new Date(iso + 'T12:00:00').toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }) : null
+
+const mismaOpcion = (l: LineaItem, o: OpcionCompra) =>
+  l.origen_compra === o.origen && (l.proveedor_id || null) === (o.proveedor_id || null)
+
 const inputCls =
   'w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
 
-export default function CotizadorForm({ solicitudId, clienteId, items, productos, action }: Props) {
+export default function CotizadorForm({ solicitudId, clienteId, tipoCliente, items, productos, opcionesPorProducto, margenes, action }: Props) {
   const [lineas, setLineas] = useState<LineaItem[]>(
     items.length ? items.map(lineaDesdeItem) : [lineaVacia()]
   )
@@ -72,14 +100,37 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
   }, [])
 
   const aplicarProducto = (key: number, prod: Producto) => {
+    const ops = opcionesPorProducto[prod.id] ?? []
+    const sug = sugerir(ops, margenes, {
+      tipo: tipoCliente,
+      categoria: prod.categoria,
+      producto_id: prod.id,
+    })
     updateLinea(key, {
       producto_id: prod.id,
       descripcion: prod.nombre,
       unidad: prod.unidad ?? 'pza',
-      precio_unitario: prod.precio_base ?? 0,
       iva_exento: prod.iva_exento,
+      opciones: sug.opciones,
+      margen_pct: sug.margen_pct,
+      costo: sug.costo,
+      proveedor_id: sug.elegida?.proveedor_id ?? '',
+      origen_compra: sug.elegida?.origen ?? '',
+      // Si hay opciones, precio sugerido; si no, cae al precio base del catálogo.
+      precio_unitario: sug.elegida ? sug.precio_sugerido : (prod.precio_base ?? 0),
     })
     setSearch(prev => ({ ...prev, [key]: '' }))
+  }
+
+  // El operador elige manualmente otra fuente de compra para esta línea.
+  const elegirOpcion = (linea: LineaItem, o: OpcionCompra) => {
+    const costo = o.costo ?? 0
+    updateLinea(linea.key, {
+      proveedor_id: o.proveedor_id ?? '',
+      origen_compra: o.origen,
+      costo,
+      precio_unitario: precioConMargen(costo, linea.margen_pct),
+    })
   }
 
   const subtotalLinea = (l: LineaItem) => l.cantidad * l.precio_unitario
@@ -104,6 +155,13 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
       precio_unitario: l.precio_unitario,
       iva_exento: l.iva_exento,
       sujeto_confirmacion: l.sujeto_confirmacion,
+      proveedor_id: l.proveedor_id || null,
+      origen_compra: l.origen_compra || null,
+      costo_unitario: l.costo || null,
+      // Margen efectivo según el precio final (puede haberse ajustado a mano).
+      margen_pct: l.costo > 0
+        ? Math.round((l.precio_unitario / l.costo - 1) * 1000) / 1000
+        : null,
     }))))
     startTransition(() => action(fd))
   }
@@ -198,9 +256,62 @@ export default function CotizadorForm({ solicitudId, clienteId, items, productos
                           </ul>
                         )}
                       </div>
-                      {linea.producto_id && (
-                        <div className="mt-1 text-[10px] text-[#003366]/60">
-                          Vinculado al catálogo
+                      {linea.producto_id && linea.opciones.length === 0 && (
+                        <div className="mt-1 text-[10px] text-amber-600">
+                          Vinculado al catálogo · sin opciones de compra (precio manual)
+                        </div>
+                      )}
+
+                      {/* Cotizador inteligente: comparación de fuentes de compra */}
+                      {linea.opciones.length > 0 && (
+                        <div className="mt-2 border border-gray-100 rounded-lg p-2 bg-gray-50/50">
+                          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                            Opciones de compra
+                          </div>
+                          <div className="space-y-1">
+                            {linea.opciones.map((o, idx) => {
+                              const sel = mismaOpcion(linea, o)
+                              const sinStock = o.en_stock === false
+                              return (
+                                <button
+                                  key={`${o.origen}-${o.proveedor_id ?? 'inv'}`}
+                                  type="button"
+                                  onClick={() => elegirOpcion(linea, o)}
+                                  className={`w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs transition-colors ${
+                                    sel ? 'bg-[#003366]/10 ring-1 ring-[#003366]/30' : 'hover:bg-white'
+                                  }`}
+                                >
+                                  <span className={`shrink-0 w-3.5 ${sel ? 'text-[#003366]' : 'text-transparent'}`}>
+                                    {sel && <CheckBadgeIcon className="w-3.5 h-3.5" />}
+                                  </span>
+                                  <span className="flex-1 min-w-0">
+                                    <span className="font-medium text-gray-700 truncate block">
+                                      {o.fuente_nombre}
+                                      {idx === 0 && (
+                                        <span className="ml-1.5 text-[9px] font-semibold text-emerald-600 uppercase">Recomendado</span>
+                                      )}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      {o.existencia != null && <>{o.existencia} pza · </>}
+                                      {fmtCad(o.caducidad) && <>cad. {fmtCad(o.caducidad)} · </>}
+                                      {sinStock
+                                        ? <span className="text-red-500 font-medium">sin stock</span>
+                                        : <span className="text-emerald-600 font-medium">disponible</span>}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 font-semibold text-gray-700 tabular-nums">
+                                    {o.costo != null ? fmt(o.costo) : '—'}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <div className="flex items-center justify-between px-2 pt-1.5 mt-1 border-t border-gray-100 text-[10px] text-gray-500">
+                            <span>Costo {fmt(linea.costo)} · margen {fmtPct(linea.margen_pct)}</span>
+                            <span className="font-semibold text-[#003366]">
+                              Venta {fmt(precioConMargen(linea.costo, linea.margen_pct))}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </td>

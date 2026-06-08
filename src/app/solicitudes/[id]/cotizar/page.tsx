@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
-import type { Producto, SolicitudItem } from '@/lib/types'
+import type { Producto, SolicitudItem, OpcionCompra, Margen, TipoCliente } from '@/lib/types'
 import CotizadorForm from './CotizadorForm'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +26,10 @@ async function guardarCotizacion(form: FormData) {
     precio_unitario: number
     iva_exento: boolean
     sujeto_confirmacion: boolean
+    proveedor_id: string | null
+    origen_compra: string | null
+    costo_unitario: number | null
+    margen_pct: number | null
   }[] = JSON.parse(itemsRaw || '[]')
 
   if (!items.length) return
@@ -74,6 +78,10 @@ async function guardarCotizacion(form: FormData) {
       precio_unitario: it.precio_unitario,
       iva_exento: it.iva_exento,
       sujeto_confirmacion: it.sujeto_confirmacion,
+      proveedor_id: it.proveedor_id || null,
+      origen_compra: it.origen_compra || null,
+      costo_unitario: it.costo_unitario,
+      margen_pct: it.margen_pct,
       posicion: i + 1,
     }))
   )
@@ -91,20 +99,36 @@ async function guardarCotizacion(form: FormData) {
 export default async function CotizadorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  const [{ data: sol }, { data: productos }] = await Promise.all([
+  const [{ data: sol }, { data: productos }, { data: opciones }, { data: margenes }] = await Promise.all([
     supabase
       .from('solicitudes')
-      .select('id, folio, cliente_id, clientes(nombre, empresa), solicitud_items(id, descripcion_libre, cantidad, unidad, nota)')
+      .select('id, folio, cliente_id, clientes(nombre, empresa, tipo), solicitud_items(id, descripcion_libre, cantidad, unidad, nota)')
       .eq('id', id)
       .single(),
     supabase
       .from('productos')
-      .select('id, nombre, laboratorio, presentacion, unidad, precio_base, iva_exento, activo')
+      .select('id, nombre, laboratorio, presentacion, unidad, categoria, precio_base, iva_exento, activo')
       .eq('activo', true)
       .order('nombre'),
+    supabase
+      .from('v_opciones_compra')
+      .select('producto_id, origen, proveedor_id, fuente_nombre, costo, existencia, en_stock, caducidad, moq, fecha_precio, match_score'),
+    supabase
+      .from('margenes')
+      .select('id, tipo_cliente, categoria, producto_id, margen_pct, prioridad, activo')
+      .eq('activo', true),
   ])
 
   if (!sol) return notFound()
+
+  // Agrupa opciones de compra por producto para el formulario.
+  const opcionesPorProducto: Record<string, OpcionCompra[]> = {}
+  for (const o of (opciones as OpcionCompra[]) ?? []) {
+    if (!o.producto_id) continue
+    ;(opcionesPorProducto[o.producto_id] ??= []).push(o)
+  }
+
+  const tipoCliente = ((sol.clientes as any)?.tipo as TipoCliente) ?? null
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">
@@ -118,8 +142,11 @@ export default async function CotizadorPage({ params }: { params: Promise<{ id: 
       <CotizadorForm
         solicitudId={id}
         clienteId={sol.cliente_id ?? ''}
+        tipoCliente={tipoCliente}
         items={(sol.solicitud_items as SolicitudItem[]) ?? []}
         productos={(productos as Producto[]) ?? []}
+        opcionesPorProducto={opcionesPorProducto}
+        margenes={(margenes as Margen[]) ?? []}
         action={guardarCotizacion}
       />
     </div>
