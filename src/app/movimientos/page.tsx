@@ -138,13 +138,11 @@ export default async function MovimientosPage({
   // El filtro por persona sale de usuarios_panel; si en la URL viene alguien
   // que ya no está activo, se conserva su chip para poder quitarlo.
   const nombresUsuario = usuariosPanel.map(u => u.nombre)
-  if (params.usuario && !nombresUsuario.includes(params.usuario)) {
-    nombresUsuario.push(params.usuario)
+  if (f.usuario && !nombresUsuario.includes(f.usuario)) {
+    nombresUsuario.push(f.usuario)
   }
 
-  const hayFiltros = Boolean(
-    params.tipo || params.sucursal || params.usuario || params.desde || params.hasta || params.q
-  )
+  const hayFiltros = Boolean(f.tipo || f.sucursal || f.usuario || f.desde || f.hasta || f.q)
 
   return (
     <div className="p-8">
@@ -176,12 +174,12 @@ export default async function MovimientosPage({
       {/* Buscador + filtros */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-4">
         <form method="GET" className="flex flex-col md:flex-row gap-3">
-          {params.tipo && <input type="hidden" name="tipo" value={params.tipo} />}
-          {params.sucursal && <input type="hidden" name="sucursal" value={params.sucursal} />}
-          {params.usuario && <input type="hidden" name="usuario" value={params.usuario} />}
+          {f.tipo && <input type="hidden" name="tipo" value={f.tipo} />}
+          {f.sucursal && <input type="hidden" name="sucursal" value={f.sucursal} />}
+          {f.usuario && <input type="hidden" name="usuario" value={f.usuario} />}
           <input
             name="q"
-            defaultValue={params.q}
+            defaultValue={f.q}
             placeholder="Buscar por producto..."
             className="flex-1 px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
           />
@@ -191,7 +189,7 @@ export default async function MovimientosPage({
               <input
                 type="date"
                 name="desde"
-                defaultValue={params.desde}
+                defaultValue={f.desde}
                 className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
               />
             </div>
