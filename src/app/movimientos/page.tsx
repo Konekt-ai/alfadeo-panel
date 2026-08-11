@@ -198,7 +198,7 @@ export default async function MovimientosPage({
               <input
                 type="date"
                 name="hasta"
-                defaultValue={params.hasta}
+                defaultValue={f.hasta}
                 className="w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
               />
             </div>
@@ -214,7 +214,7 @@ export default async function MovimientosPage({
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-sm text-gray-500 mr-1 font-medium">Periodo:</span>
           {rangos.map(r => {
-            const activo = (params.desde ?? undefined) === r.desde && (params.hasta ?? undefined) === r.hasta
+            const activo = f.desde === r.desde && f.hasta === r.hasta
             return (
               <a
                 key={r.label}
@@ -231,7 +231,7 @@ export default async function MovimientosPage({
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-sm text-gray-500 mr-1 font-medium">Tipo:</span>
           {TIPOS.map(t => {
-            const activo = params.tipo === t
+            const activo = f.tipo === t
             return (
               <a
                 key={t}
@@ -248,7 +248,7 @@ export default async function MovimientosPage({
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-sm text-gray-500 mr-1 font-medium">Plaza:</span>
           {SUCURSALES.map(s => {
-            const activo = params.sucursal === s.clave
+            const activo = f.sucursal === s.clave
             return (
               <a
                 key={s.clave}
