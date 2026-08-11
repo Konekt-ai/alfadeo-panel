@@ -112,15 +112,21 @@ Es la prioridad declarada del cliente (punto 11).
 
 ## Seguridad — leer antes de publicar
 
-### El panel entra con contraseña compartida
+### El panel no tiene control de acceso
 
-`PANEL_PASSWORD` protege el panel entero. Es suficiente para que no quede
-abierto, pero **no identifica quién hizo cada movimiento**. En cuanto varias
-personas empiecen a mover inventario (punto 8), hay que migrar a Supabase Auth
-con un usuario por persona.
+Decisión tomada: va sin login. Quien tenga la URL de Vercel entra, y el panel
+consulta Supabase con la *service role key*, que salta todas las políticas RLS
+(inventario, clientes, cotizaciones y adeudos completos).
 
-Si no se configura `PANEL_PASSWORD` en producción, el panel responde 503 a
-propósito: es preferible que no cargue a que cargue abierto.
+Cuando convenga cerrarlo, en orden de esfuerzo:
+
+1. **Vercel Deployment Protection** — cero código, se activa en *Settings →
+   Deployment Protection*. Requiere plan Pro para proteger producción.
+2. **Contraseña compartida** — un `middleware.ts` que valida una cookie contra
+   una variable de entorno. Un par de archivos.
+3. **Supabase Auth, un usuario por persona** — es lo que hace falta de todos
+   modos para el punto 8 (saber *quién* movió el inventario). Si ya se va a
+   invertir tiempo, conviene ir directo aquí y saltarse las dos anteriores.
 
 ### El esquema de la base ya está en el historial de GitHub
 

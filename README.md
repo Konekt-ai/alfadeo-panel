@@ -6,11 +6,6 @@ solicitudes de abastecimiento, clientes, inventario, proveedores y cotizaciones.
 El bot de WhatsApp que alimenta las solicitudes vive en un repo aparte
 (`alfadeo-bot`) y comparte la misma base de datos.
 
-> **Antes de publicarlo:** el panel consulta Supabase con la *service role key*,
-> que salta todas las políticas RLS. Sin `PANEL_PASSWORD` configurada, cualquiera
-> con la URL vería inventario, clientes y adeudos. Por eso en producción el panel
-> responde 503 mientras esa variable no exista.
-
 ## Stack
 
 - **Next.js 14** (App Router, Server Components, Server Actions)
@@ -28,7 +23,6 @@ El bot de WhatsApp que alimenta las solicitudes vive en un repo aparte
 | `/inventario` | Catálogo: comercial, genérico, miligramos, presentación, lote, caducidad y plaza |
 | `/inventario/nuevo` · `/inventario/[id]` | Alta y edición |
 | `/proveedores` · `/proveedores/[id]` | Proveedores e importación de listas de precios |
-| `/login` | Puerta de acceso |
 
 ## Correr en local
 
@@ -38,26 +32,23 @@ cp .env.example .env.local     # PowerShell: Copy-Item .env.example .env.local
 npm run dev                    # http://localhost:3002
 ```
 
-En desarrollo, si `PANEL_PASSWORD` está vacía no se pide contraseña.
-
 ## Variables de entorno
 
 | Variable | Para qué |
 | --- | --- |
 | `SUPABASE_URL` | URL del proyecto en Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key. **No** la anon key. Sólo servidor |
-| `PANEL_PASSWORD` | Contraseña compartida de acceso. **Obligatoria en producción** |
 
 ## Desplegar en Vercel
 
 1. **Importar el repo** en [vercel.com/new](https://vercel.com/new). Detecta
    Next.js solo; no hay que tocar los comandos de build.
-2. **Settings → Environment Variables**, agrega las tres de arriba en
+2. **Settings → Environment Variables**, agrega las dos de arriba en
    *Production* (y en *Preview* si quieres que los previews funcionen).
 3. **Deploy.**
-4. Abre la URL: debe pedir contraseña. Si en vez de eso sale
-   *"Falta configurar el acceso"*, falta `PANEL_PASSWORD` — agrégala y vuelve a
-   desplegar.
+
+El panel queda accesible para cualquiera que tenga la URL. Si más adelante
+quieren restringirlo, en `PENDIENTES.md` están las opciones.
 
 ### Nota sobre `output: 'standalone'`
 
