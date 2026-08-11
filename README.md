@@ -1,6 +1,15 @@
 # ALFA-DEO — Panel interno
 
-Panel de gestión comercial para **Alianza Farmacéutica DEO**. Permite administrar solicitudes de abastecimiento, clientes e inventario.
+Panel de gestión comercial para **Alianza Farmacéutica DEO**. Administra
+solicitudes de abastecimiento, clientes, inventario, proveedores y cotizaciones.
+
+El bot de WhatsApp que alimenta las solicitudes vive en un repo aparte
+(`alfadeo-bot`) y comparte la misma base de datos.
+
+> **Antes de publicarlo:** el panel consulta Supabase con la *service role key*,
+> que salta todas las políticas RLS. Sin `PANEL_PASSWORD` configurada, cualquiera
+> con la URL vería inventario, clientes y adeudos. Por eso en producción el panel
+> responde 503 mientras esa variable no exista.
 
 ## Stack
 
@@ -11,53 +20,74 @@ Panel de gestión comercial para **Alianza Farmacéutica DEO**. Permite administ
 ## Vistas
 
 | Ruta | Descripción |
-|------|-------------|
-| `/solicitudes` | Lista de solicitudes con filtros por estado, canal y atención requerida |
-| `/solicitudes/[id]` | Detalle de solicitud con datos del cliente e items |
-| `/clientes` | Directorio de clientes registrados |
-| `/inventario` | Catálogo de productos con existencias, lotes y caducidades |
-| `/inventario/nuevo` | Agregar producto al inventario |
-| `/inventario/[id]` | Editar o eliminar producto |
+| --- | --- |
+| `/solicitudes` | Solicitudes con filtros por estado, canal y atención requerida |
+| `/solicitudes/[id]` | Detalle con datos del cliente e items |
+| `/solicitudes/[id]/cotizar` | Cotizador con sugerencia de proveedor y márgenes |
+| `/clientes` | Directorio de clientes |
+| `/inventario` | Catálogo: comercial, genérico, miligramos, presentación, lote, caducidad y plaza |
+| `/inventario/nuevo` · `/inventario/[id]` | Alta y edición |
+| `/proveedores` · `/proveedores/[id]` | Proveedores e importación de listas de precios |
+| `/login` | Puerta de acceso |
 
-## Configuración local
+## Correr en local
 
-1. Clonar el repositorio
-2. Instalar dependencias:
-   ```bash
-   npm install
-   ```
-3. Crear `.env.local` en la raíz:
-   ```
-   SUPABASE_URL=https://tu-proyecto.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
-   ```
-4. Levantar el servidor de desarrollo:
-   ```bash
-   npm run dev
-   ```
-   El panel estará disponible en `http://localhost:3002`.
+```bash
+npm install
+cp .env.example .env.local     # PowerShell: Copy-Item .env.example .env.local
+npm run dev                    # http://localhost:3002
+```
+
+En desarrollo, si `PANEL_PASSWORD` está vacía no se pide contraseña.
+
+## Variables de entorno
+
+| Variable | Para qué |
+| --- | --- |
+| `SUPABASE_URL` | URL del proyecto en Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key. **No** la anon key. Sólo servidor |
+| `PANEL_PASSWORD` | Contraseña compartida de acceso. **Obligatoria en producción** |
+
+## Desplegar en Vercel
+
+1. **Importar el repo** en [vercel.com/new](https://vercel.com/new). Detecta
+   Next.js solo; no hay que tocar los comandos de build.
+2. **Settings → Environment Variables**, agrega las tres de arriba en
+   *Production* (y en *Preview* si quieres que los previews funcionen).
+3. **Deploy.**
+4. Abre la URL: debe pedir contraseña. Si en vez de eso sale
+   *"Falta configurar el acceso"*, falta `PANEL_PASSWORD` — agrégala y vuelve a
+   desplegar.
+
+### Nota sobre `output: 'standalone'`
+
+Está apagado por defecto y sólo se activa con `BUILD_STANDALONE=1`, que pone el
+`Dockerfile`. Vercel arma su propio bundle y no lo necesita; además, con
+standalone encendido `next start` no funciona.
+
+## Base de datos
+
+El esquema **no vive en este repositorio** (`.gitignore` excluye los `.sql`).
+Los archivos están en `supabase/` en local. Ver `PENDIENTES.md`, sección
+"Seguridad", para saber dónde respaldarlos.
+
+Migraciones aplicadas:
+
+- `cotizador-inteligente.sql` — proveedores, precios, matching y márgenes
+- `reunion-catalogo-sucursales.sql` — catálogo farmacéutico desglosado,
+  sucursales GDL/MTY, existencia por plaza y campos de facturación
 
 ## Carga inicial de inventario
 
-Para importar el inventario desde el PDF mensual:
-
 ```bash
-# Instalar dependencias Python
 pip install pdfplumber supabase
-
-# Ejecutar el script
 python3 scripts/seed-inventario.py ruta/al/inventario.pdf
 ```
 
-El script parsea las columnas Marca, Producto, Laboratorio, Lote, Caducidad, Piezas y Ubicación, e inserta los registros en las tablas `productos` e `inventario` de Supabase.
+Parsea Marca, Producto, Laboratorio, Lote, Caducidad, Piezas y Ubicación, e
+inserta en `productos` e `inventario`.
 
-## Deploy (Railway)
+## Qué falta
 
-Variables de entorno requeridas en Railway:
-
-```
-SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
-```
-
-El proyecto incluye `next.config.mjs` con `output: 'standalone'` para compatibilidad con el Dockerfile.
+Ver **[PENDIENTES.md](PENDIENTES.md)**: estado de los 39 puntos de la reunión,
+ordenados por prioridad.

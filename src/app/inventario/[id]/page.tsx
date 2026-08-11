@@ -3,7 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
-import { UBICACIONES } from '../page'
+import { UBICACIONES } from '@/lib/constantes'
 
 export const dynamic = 'force-dynamic'
 

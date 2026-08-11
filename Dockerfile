@@ -9,6 +9,9 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Activa output:'standalone' en next.config.mjs. Fuera de Docker se deja
+# apagado porque rompe `next start` y en Vercel no se necesita.
+ENV BUILD_STANDALONE=1
 RUN npm run build
 
 FROM base AS runner
