@@ -13,15 +13,14 @@ qué orden conviene atacarlo.
 | --- | --- | --- |
 | 1 | Preguntar "¿requiere factura?" | Al final del flujo, con botones, y captura razón social / RFC / CP / correo |
 | 2 | Responder las 3 preguntas frecuentes | Existencia: consulta inventario real. Precio: pasa a asesor. Entrega: fecha calculada |
-| 3 | Contemplar que no generan IVA | `productos.tasa_iva`, 0% en medicamento de uso humano |
 | 4 | Respetar el flujo real de compra | Producto → cantidad → precio → entrega → factura |
-| 5 | Tiempos de DHL | Día siguiente; si sale viernes llega el martes; salta festivos de ley |
-| 6 | Avisar tiempos a clientes nuevos | Va en el primer mensaje, sin que lo pidan |
 | 12 | Botón de WhatsApp en la web | `alfadeo-bot/web/boton-whatsapp.html`, listo para pegar |
 | 15 | Redirigir al número que corresponde | Por existencia y por ciudad del cliente |
 | 39 | Usar la conversación real de referencia | El bot entiende texto libre, no obliga a navegar el menú |
 
 ### En el panel (este repo)
+
+#### Catálogo — migración `reunion-catalogo-sucursales.sql`
 
 | # | Punto | Cómo quedó |
 | --- | --- | --- |
@@ -31,82 +30,92 @@ qué orden conviene atacarlo.
 | 20 | El comercial antes que el genérico | El ranking de búsqueda le da más peso al comercial |
 | 28 | Ver en qué ubicación hay | Columna Plaza y filtro Guadalajara / Monterrey |
 
+#### Operación — migración `reunion-operacion.sql`
+
+| # | Punto | Cómo quedó |
+| --- | --- | --- |
+| 3 | Contemplar que no generan IVA | `pos_registrar_venta` aplica `productos.tasa_iva` línea por línea y la congela en la venta. La mayoría sale en 0% |
+| 5 | Tiempos de DHL | `src/lib/entrega.ts`: día siguiente hábil; si sale viernes llega el martes; salta los festivos del artículo 74 |
+| 6 | Avisar tiempos a clientes nuevos | La fecha se compromete al cerrar la venta (`ventas.fecha_entrega`) y se muestra en el tablero y en el POS |
+| 7 | Facturar desde el sistema y descontar solo | La venta nace en `/pos` y descuenta inventario en la misma transacción. El timbrado se registra en `/ventas/[id]` |
+| 8 | Todos mueven el mismo inventario en tiempo real | `registrar_movimiento()` bloquea el lote antes de tocarlo. Cada movimiento va firmado con quien lo hizo |
+| 10 | Sustituir el registro en papel | `/movimientos`: kardex completo con entradas, salidas y ajustes |
+| 11 | Descontar desde el punto de venta | `/pos`, pensado para computadora y celular |
+| 16 | Integrar de verdad el punto de venta | El POS es el mismo sistema, no un módulo aparte |
+| 21 | Centralizar todo en una plataforma | Menú agrupado por trabajo: almacén, comercial, administración |
+| 22 | Aprovechar los códigos de barras de Aspel | `/inventario/importar` los carga; el POS acepta el escaneo en el mismo campo que el nombre |
+| 23 | Control de lotes | Una fila de `inventario` es un lote. Las salidas son FEFO: sale primero lo que caduca antes |
+| 26 | Captura de compras al recibir mercancía | `/compras`, y al recibirla crea los lotes nuevos |
+| 27 | Entregas al cliente institucional | Cada entrega es una venta con folio, lotes y fecha comprometida |
+| 29 | Lector de facturas | Lee el **XML del CFDI** del proveedor y precarga la compra completa |
+| 30 | Estado de cuenta por cliente | `/cobranza/[clienteId]`: facturado, pagado, saldo y saldo vencido |
+| 31 | Alertas de pagos pendientes | Tablero de `/inicio` y `/cobranza`, con cobranza, caducidades y reorden |
+| 32 | No depender del SAT | Las alertas se calculan con `pagos` capturados en el panel. `pagos.origen` distingue lo manual de lo que venga del SAT |
+| 33 | Módulo administrativo | `/ventas`: estado de cada venta, partidas, lotes, factura, pagos y saldo |
+| 34 | Clientes con crédito | `clientes.dias_credito` precarga el plazo y calcula `fecha_vencimiento` al vender |
+| 35 | Clientes tipo IMSS | `clientes.portal_pagos_url`: el enlace al portal vive junto al adeudo |
+| 36 | Clientes que facturan con su sistema | `ventas.factura_emisor` acepta Contalink o Aspel sin recapturar la venta |
+| 37 | Traslados entre plazas | `/traslados`: un documento, salida en origen y entrada en destino con el mismo lote |
+| 13 | Textos más grandes | Aplicado en inventario, clientes, proveedores, solicitudes y todo lo nuevo |
+
 ---
 
-## Falta — por prioridad
+## Falta
 
-### 1. Inventario y punto de venta
+### 1. Timbrado real del CFDI
 
-Es la prioridad declarada del cliente (punto 11).
+Hoy `/ventas/[id]` **registra** la factura (serie, folio, UUID, quién la timbró),
+que es lo que permite dejar de recapturar lo que ya se facturó en Aspel o
+Contalink. Lo que no hace todavía es **timbrar**.
 
-- **[11] Descontar existencias desde el punto de venta**, computadora o celular.
-- **[8] Que todos los usuarios muevan el mismo inventario en tiempo real.**
-  Hoy no hay usuarios: el panel entra con una contraseña compartida. Para saber
-  *quién* movió qué hace falta migrar a Supabase Auth (ver "Seguridad").
-- **[10] Sustituir el registro en papel** de entradas y salidas.
-- **[22] Aprovechar los códigos de barras de Aspel** para que el POS facture
-  escaneando y descuente solo. La columna `productos.codigo_barras` ya existe,
-  pero está vacía: falta exportarlos de Aspel e importarlos.
-- **[23] Control de lotes.** Hoy cada lote es una fila separada en `productos`,
-  que es la razón por la que el bot tiene que fusionarlos para no mostrar el
-  mismo producto tres veces. Lo correcto es una tabla `lotes` aparte con
-  `producto_id`, lote, caducidad y existencia, y que `productos` sea el catálogo.
-  **Conviene hacerlo antes que el POS**, porque el POS necesita decidir de qué
-  lote descuenta (primero el que caduca antes).
-- **[26] Captura de compras al recibir mercancía.**
-- **[27] Entregas al cliente institucional** con control real.
+Para timbrar desde aquí hace falta contratar un PAC (Facturama, SW Sapien,
+Finkok) y agregar el llamado a su API. El dato duro ya está listo: cada venta
+trae sus partidas con la tasa de IVA correcta, y `sucursales` tiene razón
+social y RFC de cada empresa.
 
-### 2. Facturación
+**Ojo antes de timbrar:** hay 16 productos marcados con IVA 16% porque no se
+les detectó forma farmacéutica (suplementos y material de curación). Que
+contabilidad los revise en el panel.
 
-- **[7] Facturar desde el sistema y que descuente inventario automáticamente**,
-  para dejar de hacerlo en Aspel.
-- **[3] Aplicar la tasa de IVA por producto** al timbrar. El dato ya está en
-  `productos.tasa_iva`; falta usarlo.
-  **Ojo:** 16 productos quedaron marcados con IVA 16% porque no se les detectó
-  forma farmacéutica (suplementos y material de curación). Que contabilidad los
-  revise en el panel antes de facturar.
-- **[29] Lector de facturas** para capturar documentos escaneados.
+### 2. Datos que faltan cargar
 
-### 3. Cobranza y administración
+Nada de esto es programación, pero sin ello el sistema opera a medias:
 
-- **[30] Estado de cuenta por cliente**: adeudos, pagos pendientes y realizados.
-- **[31] Alertas de pagos pendientes** y seguimiento administrativo.
-- **[32] No depender del SAT.** Que las alertas funcionen con datos propios,
-  usando el SAT sólo como refuerzo.
-- **[33] Módulo administrativo** con el estado de cada venta.
-- **[34] Clientes con crédito** (ej. pago a 10 días) sin revisar correos a mano.
-- **[35] Clientes como el IMSS**, donde hay que estar checando si ya liberaron.
-- **[36] Clientes que facturan con su propio sistema** (Grajes usa Contalink).
-- **[38] Automatizar la descarga semanal de reportes** de Contalink y otros.
+- **Códigos de barras de Aspel** (punto 22). `productos.codigo_barras` sigue
+  vacío. Exporta el catálogo de Aspel y súbelo en `/inventario/importar`.
+  Sin esto, el escaneo del POS no sirve.
+- **Inventario de Monterrey** (punto 24). Los 149 registros están en GDL.
+  MTY maneja ~25 productos que aún no se capturan.
+- **Razón social y RFC de cada plaza** (punto 9). `sucursales` tiene las
+  columnas vacías. Se necesitan para facturar, porque son empresas distintas.
+- **Días de crédito por cliente** (punto 34) y **portal de pagos** (punto 35).
+- **Precios de venta.** `productos.precio_base` alimenta el POS.
+- **Stock mínimo** (`productos.stock_minimo`) para que sirvan las alertas de
+  reorden.
 
-### 4. Multiempresa
+### 3. Automatizaciones que dependen de terceros
 
-- **[9] Dos empresas independientes**, Guadalajara y Monterrey, del mismo dueño.
-  La tabla `sucursales` ya existe con las dos plazas, pero falta separar la
-  facturación: son razones sociales y RFC distintos.
-- **[37] Traslados entre plazas** sin duplicar el trabajo administrativo:
-  facturar en Guadalajara y mover el producto a Monterrey debe ser un solo
-  movimiento.
-- **Cargar el inventario de Monterrey.** Hoy los 149 registros están en GDL.
-  Monterrey maneja ~25 productos (punto 24) que aún no se capturan. Cuando se
-  carguen, basta ponerles el `sucursal_id` de MTY y el bot dirá "disponible en
-  Monterrey" solo.
+- **[38] Descarga semanal de reportes de Contalink.** Necesita credenciales y
+  saber si Contalink expone API o sólo descarga manual.
+- **[32] Conciliación con el SAT.** `pagos.origen` ya contempla `'sat'` y
+  `'banco'`. Falta el proceso que descargue los CFDI recibidos y los concilie.
+  Que quede claro: **el sistema no depende de esto para funcionar**, es refuerzo.
+- **[29] Lector de facturas en PDF escaneado.** El XML ya se lee y es exacto.
+  Un PDF escaneado necesitaría OCR (Textract, Document AI) y siempre va a ser
+  menos confiable que el XML. Pídele el XML al proveedor antes de invertir ahí.
 
-### 5. Interfaz
+### 4. Aspel
 
-- **[13] Textos más grandes y más intuitivo.** Se aplicó en `/inventario`;
-  faltan `/solicitudes`, `/clientes`, `/proveedores` y el cotizador.
-- **[14] Generar cotizaciones desde el panel** sin depender de WhatsApp.
-  Ya existe `/solicitudes/[id]/cotizar`; falta poder arrancar una cotización
-  desde cero, sin una solicitud previa.
-- **[16] Integrar de verdad el punto de venta.**
-- **[21] Centralizar todo en una sola plataforma.**
+- **[25] Integración con Aspel.** Es el punto que más diferencia al producto y
+  el que más trabajo tiene. Por ahora la vía es **exportar de Aspel e importar
+  aquí** (`/inventario/importar`). Las otras dos opciones —leer la base Firebird
+  de Aspel SAE directo, o usar el SDK de Aspel— hay que decidirlas con el
+  cliente, porque cambian el esfuerzo por completo.
 
-### 6. Aspel
+### 5. Cotizaciones
 
-- **[25] No hay otro proveedor con integración similar a Aspel.** Es el punto
-  que más diferencia al producto y el que más trabajo tiene: hay que definir si
-  la integración es por exportación de archivos, por base de datos o por API.
+- **[14] Arrancar una cotización desde cero**, sin una solicitud previa. Hoy
+  `/solicitudes/[id]/cotizar` requiere la solicitud.
 
 ---
 
@@ -115,18 +124,26 @@ Es la prioridad declarada del cliente (punto 11).
 ### El panel no tiene control de acceso
 
 Decisión tomada: va sin login. Quien tenga la URL de Vercel entra, y el panel
-consulta Supabase con la *service role key*, que salta todas las políticas RLS
-(inventario, clientes, cotizaciones y adeudos completos).
+consulta Supabase con la *service role key*, que salta todas las políticas RLS.
 
-Cuando convenga cerrarlo, en orden de esfuerzo:
+**Esto pesa más ahora que antes.** Antes el panel sólo leía; ahora cualquiera
+con la URL puede vender, mover inventario y registrar pagos.
+
+El selector de usuario del header **no es seguridad**: es una firma para saber
+quién movió qué (punto 8). Cualquiera puede elegir cualquier nombre.
+
+Opciones, en orden de esfuerzo:
 
 1. **Vercel Deployment Protection** — cero código, se activa en *Settings →
    Deployment Protection*. Requiere plan Pro para proteger producción.
 2. **Contraseña compartida** — un `middleware.ts` que valida una cookie contra
    una variable de entorno. Un par de archivos.
 3. **Supabase Auth, un usuario por persona** — es lo que hace falta de todos
-   modos para el punto 8 (saber *quién* movió el inventario). Si ya se va a
-   invertir tiempo, conviene ir directo aquí y saltarse las dos anteriores.
+   modos para que la firma del punto 8 sea confiable.
+   `usuarios_panel.auth_uid` ya está reservada para amarrar cada persona con su
+   cuenta sin perder el historial de movimientos ya registrado.
+
+Con dinero de por medio en el sistema, la 3 es la que corresponde.
 
 ### El esquema de la base ya está en el historial de GitHub
 

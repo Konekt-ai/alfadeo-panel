@@ -222,3 +222,296 @@ export interface Solicitud {
   clientes: Cliente | null
   solicitud_items: SolicitudItem[]
 }
+
+// =====================================================================
+//  Operación: inventario en tiempo real, punto de venta y cobranza
+//  (migración `reunion-operacion.sql`)
+// =====================================================================
+
+// Quién opera el panel. Sirve para firmar movimientos, no para autenticar.
+export interface UsuarioPanel {
+  id: string
+  nombre: string
+  iniciales: string | null
+  rol: 'operador' | 'almacen' | 'ventas' | 'admin' | 'contabilidad'
+  sucursal_id: string | null
+  activo: boolean
+}
+
+// Un lote concreto en una plaza. Es una fila de `inventario`: el mismo
+// producto aparece varias veces, una por lote y caducidad.
+export interface Lote {
+  lote: string | null
+  caducidad: string | null
+  ubicacion: string | null
+  existencia: number
+  sucursal?: string | null
+  costo?: number | null
+}
+
+export type TipoMovimiento =
+  | 'entrada' | 'salida' | 'ajuste' | 'venta' | 'devolucion'
+  | 'merma' | 'traslado_salida' | 'traslado_entrada'
+
+// Fila de v_movimientos: el kardex ya legible.
+export interface Movimiento {
+  id: string
+  created_at: string
+  tipo: TipoMovimiento
+  cantidad: number              // con signo: + entra, - sale
+  existencia_antes: number | null
+  existencia_despues: number | null
+  lote: string | null
+  caducidad: string | null
+  ubicacion: string | null
+  motivo: string | null
+  referencia_tipo: string | null
+  referencia_id: string | null
+  usuario: string | null
+  producto_id: string
+  producto: string
+  nombre_generico: string | null
+  concentracion: string | null
+  presentacion: string | null
+  sucursal_id: string | null
+  sucursal: string | null
+  sucursal_nombre: string | null
+}
+
+// Fila de buscar_productos_pos(): lo que necesita la caja para cobrar.
+export interface ProductoPOS {
+  producto_id: string
+  nombre: string
+  nombre_comercial: string | null
+  nombre_generico: string | null
+  concentracion: string | null
+  forma_farmaceutica: string | null
+  presentacion: string | null
+  laboratorio: string | null
+  codigo_barras: string | null
+  precio_base: number | null
+  tasa_iva: number
+  controlado: boolean
+  existencia: number          // en la plaza seleccionada
+  existencia_otras: number    // en las demás plazas (minuta 28)
+  score: number
+  lotes: Lote[]
+}
+
+export type FormaPago = 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'credito'
+export type EstadoVenta = 'borrador' | 'cerrada' | 'cancelada'
+export type FacturaEmisor = 'interno' | 'aspel' | 'contalink' | 'otro'
+
+export interface VentaItem {
+  id: string
+  venta_id: string
+  producto_id: string | null
+  descripcion: string
+  cantidad: number
+  precio_unitario: number
+  descuento_pct: number
+  // Congelada al vender: si mañana cambia la tasa del catálogo, esta venta
+  // no se altera. La mayoría de sus productos va en 0 (minuta 3).
+  tasa_iva: number
+  subtotal: number
+  iva: number
+  total: number
+  costo_unitario: number | null
+  lotes: Lote[]
+  posicion: number
+}
+
+export interface Venta {
+  id: string
+  folio: string | null
+  sucursal_id: string
+  cliente_id: string | null
+  solicitud_id: string | null
+  cotizacion_id: string | null
+  estado: EstadoVenta
+  forma_pago: FormaPago
+  dias_credito: number
+  fecha: string
+  fecha_vencimiento: string | null
+  fecha_entrega: string | null
+  subtotal: number
+  iva: number
+  total: number
+  requiere_factura: boolean | null
+  factura_emisor: FacturaEmisor | null
+  factura_serie: string | null
+  factura_folio: string | null
+  factura_uuid: string | null
+  facturado_en: string | null
+  usuario: string | null
+  canal: 'pos' | 'panel' | 'whatsapp' | 'web'
+  notas: string | null
+  created_at: string
+}
+
+export type EstadoCobranza = 'pagada' | 'pendiente' | 'por_vencer' | 'vencida' | 'cancelada'
+
+// Fila de v_ventas_cobranza: la venta con lo que ya se cobró y lo que falta.
+export interface VentaCobranza {
+  venta_id: string
+  folio: string | null
+  fecha: string
+  fecha_vencimiento: string | null
+  fecha_entrega: string | null
+  estado: EstadoVenta
+  forma_pago: FormaPago
+  dias_credito: number
+  total: number
+  requiere_factura: boolean | null
+  factura_emisor: FacturaEmisor | null
+  factura_uuid: string | null
+  canal: string
+  usuario: string | null
+  cliente_id: string | null
+  cliente_nombre: string | null
+  cliente_empresa: string | null
+  portal_pagos_url: string | null
+  factura_externa: string | null
+  sucursal_id: string | null
+  sucursal: string | null
+  pagado: number
+  saldo: number
+  ultimo_pago: string | null
+  estado_cobranza: EstadoCobranza
+  dias_vencida: number
+}
+
+// Fila de v_estado_cuenta_cliente (minuta 30).
+export interface EstadoCuentaCliente {
+  cliente_id: string
+  nombre: string | null
+  empresa: string | null
+  tipo: TipoCliente | null
+  telefono_wa: string | null
+  correo: string | null
+  dias_credito: number
+  limite_credito: number | null
+  portal_pagos_url: string | null
+  factura_externa: string | null
+  ventas: number
+  facturado: number
+  pagado: number
+  saldo: number
+  saldo_vencido: number
+  facturas_vencidas: number
+  dias_mas_atrasado: number | null
+  ultimo_pago: string | null
+  ultima_venta: string | null
+}
+
+export type MetodoPago = 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'compensacion'
+
+export interface Pago {
+  id: string
+  venta_id: string | null
+  cliente_id: string | null
+  monto: number
+  fecha: string
+  metodo: MetodoPago
+  referencia: string | null
+  // 'manual' es la fuente de verdad; el SAT sólo confirma (minuta 32).
+  origen: 'manual' | 'sat' | 'banco'
+  usuario: string | null
+  notas: string | null
+  created_at: string
+}
+
+export type TipoAlerta = 'cobranza_vencida' | 'cobranza_por_vencer' | 'caducidad' | 'stock_bajo'
+
+// Fila de v_alertas: lo que hay que perseguir hoy (minuta 31).
+export interface Alerta {
+  tipo: TipoAlerta
+  prioridad: 'alta' | 'media' | 'baja'
+  referencia_id: string | null
+  referencia_tipo: string | null
+  titulo: string
+  detalle: string
+  monto: number | null
+  fecha: string | null
+  sucursal: string | null
+}
+
+export type EstadoTraslado = 'borrador' | 'en_transito' | 'recibido' | 'cancelado'
+
+export interface Traslado {
+  id: string
+  folio: string | null
+  origen_id: string
+  destino_id: string
+  estado: EstadoTraslado
+  paqueteria: string | null
+  guia: string | null
+  fecha_envio: string | null
+  fecha_estimada: string | null
+  fecha_recepcion: string | null
+  usuario: string | null
+  notas: string | null
+  created_at: string
+}
+
+export interface TrasladoItem {
+  id: string
+  traslado_id: string
+  producto_id: string
+  cantidad: number
+  lote: string | null
+  caducidad: string | null
+  lotes: Lote[]
+  posicion: number
+}
+
+export type EstadoCompra = 'borrador' | 'recibida' | 'cancelada'
+
+export interface Compra {
+  id: string
+  folio: string | null
+  proveedor_id: string | null
+  sucursal_id: string
+  fecha: string
+  estado: EstadoCompra
+  subtotal: number
+  iva: number
+  total: number
+  moneda: string
+  factura_serie: string | null
+  factura_folio: string | null
+  factura_uuid: string | null
+  emisor_rfc: string | null
+  emisor_nombre: string | null
+  usuario: string | null
+  notas: string | null
+  created_at: string
+}
+
+export interface CompraItem {
+  id: string
+  compra_id: string
+  producto_id: string | null
+  descripcion: string
+  clave_prov: string | null
+  codigo_barras: string | null
+  cantidad: number
+  costo_unitario: number
+  tasa_iva: number
+  lote: string | null
+  caducidad: string | null
+  ubicacion: string | null
+  posicion: number
+}
+
+// Línea de carrito del POS, antes de mandarla a pos_registrar_venta().
+export interface LineaPOS {
+  producto_id: string
+  descripcion: string
+  cantidad: number
+  precio_unitario: number
+  descuento_pct: number
+  tasa_iva: number
+  existencia: number
+  controlado: boolean
+}
