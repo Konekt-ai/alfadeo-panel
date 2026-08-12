@@ -43,8 +43,8 @@ export default async function SolicitudesPage({
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6 md:mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Solicitudes</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-2xl font-semibold text-gray-900">Solicitudes</h1>
+          <p className="text-base text-gray-500 mt-1">
             {solicitudes?.length ?? 0} {(solicitudes?.length ?? 0) === 1 ? 'registro' : 'registros'}
           </p>
         </div>
@@ -53,8 +53,8 @@ export default async function SolicitudesPage({
       {/* Filtros */}
       <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 md:px-5 md:py-4 mb-5 space-y-3">
         <div className="flex items-center gap-1.5 text-gray-400">
-          <FunnelIcon className="w-3.5 h-3.5" />
-          <span className="text-xs font-semibold uppercase tracking-wider">Filtros</span>
+          <FunnelIcon className="w-4 h-4" />
+          <span className="text-sm font-semibold uppercase tracking-wider">Filtros</span>
         </div>
         <div className="space-y-3 md:flex md:space-y-0 md:flex-wrap md:gap-y-3 md:gap-x-6">
           <FilterGroup label="Estado">
@@ -81,30 +81,30 @@ export default async function SolicitudesPage({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-5 text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-5 text-base">
           Error al cargar: {error.message}
         </div>
       )}
 
       {/* Tabla — desktop */}
       <div className="hidden md:block bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Folio</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Cliente</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Canal</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Estado</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Urgencia</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Ciudad entrega</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Fecha</th>
-              <th className="px-5 py-3.5" />
+            <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Folio</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Cliente</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Canal</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Urgencia</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Ciudad entrega</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
+              <th className="px-5 py-4" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {(!solicitudes || solicitudes.length === 0) && (
               <tr>
-                <td colSpan={8} className="text-center py-20 text-gray-300 text-sm">
+                <td colSpan={8} className="text-center py-20 text-gray-400 text-base">
                   No hay solicitudes con los filtros seleccionados.
                 </td>
               </tr>
@@ -117,36 +117,36 @@ export default async function SolicitudesPage({
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-[#003366]">#{sol.folio}</span>
                       {sol.requiere_humano && (
-                        <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" title="Requiere atención humana" />
+                        <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 shrink-0" title="Requiere atención humana" />
                       )}
                     </div>
                   </td>
                   <td className="px-5 py-4">
                     <div className="font-medium text-gray-900">{sol.clientes?.nombre ?? '—'}</div>
                     {sol.clientes?.empresa && (
-                      <div className="text-xs text-gray-400 mt-0.5">{sol.clientes.empresa}</div>
+                      <div className="text-sm text-gray-500 mt-0.5">{sol.clientes.empresa}</div>
                     )}
                   </td>
                   <td className="px-5 py-4">
-                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                    <span className="text-sm font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
                       {canalLabel(sol.canal)}
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${estadoColor(sol.estado)}`}>
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-sm font-medium ${estadoColor(sol.estado)}`}>
                       {estadoLabel(sol.estado)}
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${urgenciaColor(sol.urgencia)}`}>
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-sm font-medium ${urgenciaColor(sol.urgencia)}`}>
                       {sol.urgencia}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-gray-500 text-sm">{sol.ciudad_entrega ?? '—'}</td>
-                  <td className="px-5 py-4 text-gray-400 text-xs whitespace-nowrap">{formatDate(sol.created_at)}</td>
+                  <td className="px-5 py-4 text-gray-500">{sol.ciudad_entrega ?? '—'}</td>
+                  <td className="px-5 py-4 text-gray-400 text-sm whitespace-nowrap">{formatDate(sol.created_at)}</td>
                   <td className="px-5 py-4">
                     <Link href={`/solicitudes/${sol.id}`}>
-                      <ChevronRightIcon className="w-4 h-4 text-gray-300 group-hover:text-[#003366] transition-colors" />
+                      <ChevronRightIcon className="w-5 h-5 text-gray-300 group-hover:text-[#003366] transition-colors" />
                     </Link>
                   </td>
                 </tr>
@@ -159,7 +159,7 @@ export default async function SolicitudesPage({
       {/* Tarjetas — móvil */}
       <div className="md:hidden space-y-3">
         {(!solicitudes || solicitudes.length === 0) && (
-          <div className="text-center py-16 text-gray-300 text-sm bg-white border border-gray-200 rounded-xl">
+          <div className="text-center py-16 text-gray-400 text-base bg-white border border-gray-200 rounded-xl">
             No hay solicitudes con los filtros seleccionados.
           </div>
         )}
@@ -175,31 +175,31 @@ export default async function SolicitudesPage({
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-semibold text-[#003366]">#{sol.folio}</span>
                   {sol.requiere_humano && (
-                    <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 shrink-0" />
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${estadoColor(sol.estado)}`}>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-sm font-medium ${estadoColor(sol.estado)}`}>
                     {estadoLabel(sol.estado)}
                   </span>
                   <ChevronRightIcon className="w-4 h-4 text-gray-300" />
                 </div>
               </div>
-              <div className="font-medium text-gray-900 text-sm">{sol.clientes?.nombre ?? '—'}</div>
+              <div className="font-medium text-gray-900 text-base">{sol.clientes?.nombre ?? '—'}</div>
               {sol.clientes?.empresa && (
-                <div className="text-xs text-gray-400 mt-0.5">{sol.clientes.empresa}</div>
+                <div className="text-sm text-gray-500 mt-0.5">{sol.clientes.empresa}</div>
               )}
               <div className="flex items-center gap-3 mt-3 flex-wrap">
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                <span className="text-sm text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
                   {canalLabel(sol.canal)}
                 </span>
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${urgenciaColor(sol.urgencia)}`}>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-sm font-medium ${urgenciaColor(sol.urgencia)}`}>
                   {sol.urgencia}
                 </span>
                 {sol.ciudad_entrega && (
-                  <span className="text-xs text-gray-400">{sol.ciudad_entrega}</span>
+                  <span className="text-sm text-gray-500">{sol.ciudad_entrega}</span>
                 )}
-                <span className="text-xs text-gray-300 ml-auto">{formatDate(sol.created_at)}</span>
+                <span className="text-sm text-gray-400 ml-auto">{formatDate(sol.created_at)}</span>
               </div>
             </Link>
           )
@@ -212,7 +212,7 @@ export default async function SolicitudesPage({
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-xs text-gray-400 mr-1">{label}:</span>
+      <span className="text-sm text-gray-500 mr-1 font-medium">{label}:</span>
       {children}
     </div>
   )
@@ -222,7 +222,7 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
   return (
     <a
       href={href}
-      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+      className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors border ${
         active
           ? 'bg-[#003366] text-white border-[#003366]'
           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'

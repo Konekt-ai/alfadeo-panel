@@ -23,7 +23,11 @@ const TIPOS: TipoMovimiento[] = [
 const esTipo = (t: string | undefined): t is TipoMovimiento =>
   !!t && (TIPOS as string[]).includes(t)
 
-const soloFecha = (d: Date) => d.toISOString().slice(0, 10)
+// GDL y MTY están en UTC−6 todo el año (México ya no cambia de horario). El
+// día se calcula con ese desfase para que "Hoy" sea el día del almacén y no
+// el de UTC: si no, a partir de las 6 de la tarde el filtro se recorre.
+const OFFSET_MX = '-06:00'
+const diaMx = (ms: number) => new Date(ms - 6 * 3600000).toISOString().slice(0, 10)
 
 // Existencias son numeric(14,3): se enseñan sin decimales cuando son enteras,
 // que es el 99% de los casos en piezas.
@@ -53,6 +57,7 @@ export default async function MovimientosPage({
     hasta?: string
     q?: string
     pagina?: string
+    referencia?: string
   }>
 }) {
   const params = await searchParams
@@ -66,6 +71,9 @@ export default async function MovimientosPage({
     desde: params.desde || undefined,
     hasta: params.hasta || undefined,
     q: params.q || undefined,
+    // Los movimientos que generó un documento concreto. Es a donde llevan los
+    // enlaces "ver los movimientos de esta venta / compra / traslado".
+    referencia: params.referencia || undefined,
   }
 
   const pagina = Math.min(Math.max(Number(params.pagina) || 1, 1), PAGINA_MAX)
@@ -82,11 +90,9 @@ export default async function MovimientosPage({
     .eq('activo', true)
     .order('es_matriz', { ascending: false })
 
-  const sucursales = (dataSucursales ?? []).map(s => ({
-    id: String(s.id),
-    clave: String(s.clave),
-    nombre: String(s.nombre),
-  }))
+  // El cliente de Supabase no tiene tipos generados: se le pone forma aquí.
+  const filasSucursal = (dataSucursales ?? []) as Array<{ id: string; clave: string; nombre: string }>
+  const sucursales = filasSucursal.map(s => ({ id: s.id, clave: s.clave, nombre: s.nombre }))
 
   // ---- Kardex ----------------------------------------------------------
   let consulta = supabase
@@ -98,11 +104,12 @@ export default async function MovimientosPage({
   if (f.tipo) consulta = consulta.eq('tipo', f.tipo)
   if (f.sucursal) consulta = consulta.eq('sucursal', f.sucursal)
   if (f.usuario) consulta = consulta.eq('usuario', f.usuario)
-  // El rango es por día completo; `created_at` es timestamptz y lo compara el
-  // servidor de base de datos.
-  if (f.desde) consulta = consulta.gte('created_at', `${f.desde}T00:00:00`)
-  if (f.hasta) consulta = consulta.lte('created_at', `${f.hasta}T23:59:59.999`)
+  // El rango es por día completo y con la zona horaria explícita, para que el
+  // corte del día sea el del almacén.
+  if (f.desde) consulta = consulta.gte('created_at', `${f.desde}T00:00:00${OFFSET_MX}`)
+  if (f.hasta) consulta = consulta.lte('created_at', `${f.hasta}T23:59:59.999${OFFSET_MX}`)
   if (f.q) consulta = consulta.ilike('producto', `%${f.q}%`)
+  if (f.referencia) consulta = consulta.eq('referencia_id', f.referencia)
 
   // "Cargar más" acumula: la página 2 muestra los 200 más recientes.
   const { data, error, count } = await consulta.range(0, pagina * POR_PAGINA - 1)
@@ -115,8 +122,8 @@ export default async function MovimientosPage({
   const salieron = movimientos.reduce((s, m) => s + (m.cantidad < 0 ? -m.cantidad : 0), 0)
 
   // ---- Filtros ---------------------------------------------------------
-  const hoy = soloFecha(new Date())
-  const haceDias = (n: number) => soloFecha(new Date(Date.now() - n * 86400000))
+  const hoy = diaMx(Date.now())
+  const haceDias = (n: number) => diaMx(Date.now() - n * 86400000)
 
   const buildUrl = (cambios: Record<string, string | undefined>) => {
     // Al cambiar cualquier filtro se vuelve a la primera página.
@@ -142,10 +149,23 @@ export default async function MovimientosPage({
     nombresUsuario.push(f.usuario)
   }
 
-  const hayFiltros = Boolean(f.tipo || f.sucursal || f.usuario || f.desde || f.hasta || f.q)
+  const hayFiltros = Boolean(f.tipo || f.sucursal || f.usuario || f.desde || f.hasta || f.q || f.referencia)
 
   return (
     <div className="p-8">
+      {f.referencia && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 mb-6 flex flex-wrap items-center gap-3">
+          <span className="text-base text-blue-900">
+            Mostrando sólo los movimientos de un documento
+            {movimientos[0]?.motivo && <> · <strong>{movimientos[0].motivo}</strong></>}.
+          </span>
+          <a href={buildUrl({ referencia: undefined })}
+            className="ml-auto text-base font-medium text-[#003366] hover:underline whitespace-nowrap">
+            Ver todos
+          </a>
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Movimientos de inventario</h1>
         <p className="text-base text-gray-500 mt-1">
@@ -266,7 +286,7 @@ export default async function MovimientosPage({
           <div className="flex gap-2 flex-wrap items-center">
             <span className="text-sm text-gray-500 mr-1 font-medium">Quién:</span>
             {nombresUsuario.map(n => {
-              const activo = params.usuario === n
+              const activo = f.usuario === n
               return (
                 <a
                   key={n}

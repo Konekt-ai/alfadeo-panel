@@ -19,14 +19,18 @@ import { supabase } from '@/lib/supabase'
 import { usuarioActual } from '@/lib/usuario'
 import type { ProductoPOS } from '@/lib/types'
 
+// Los tipos van sin `export` a propósito: un archivo 'use server' sólo
+// puede exportar funciones async. Se usan en las firmas de abajo, así que
+// el cliente los infiere solo al llamar a la acción.
+
 // Una línea del traslado antes de guardarla. El lote NO se elige a mano:
 // lo decide `descontar_fefo` al enviar, y se guarda en traslado_items.lotes.
-export interface PartidaTraslado {
+interface PartidaTraslado {
   producto_id: string
   cantidad: number
 }
 
-export interface DatosTraslado {
+interface DatosTraslado {
   origen_id: string
   destino_id: string
   paqueteria: string
@@ -37,7 +41,7 @@ export interface DatosTraslado {
   partidas: PartidaTraslado[]
 }
 
-export type ResultadoTraslado =
+type ResultadoTraslado =
   // `aviso` = el traslado sí se creó, pero el envío inmediato falló
   // (por ejemplo, existencia insuficiente). Queda en borrador.
   | { ok: true; id: string; folio: string | null; aviso?: string }

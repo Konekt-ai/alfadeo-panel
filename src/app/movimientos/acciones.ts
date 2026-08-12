@@ -107,7 +107,17 @@ export async function lotesDeProducto(
 
   if (error) return { lotes: [], error: error.message }
 
-  const lotes: LoteDisponible[] = (data ?? []).map(fila => ({
+  // El cliente de Supabase no tiene tipos generados: se le pone forma aquí.
+  const filas = (data ?? []) as Array<{
+    id: string
+    lote: string | null
+    caducidad: string | null
+    ubicacion: string | null
+    existencia: number | null
+    costo_unitario: number | null
+  }>
+
+  const lotes: LoteDisponible[] = filas.map(fila => ({
     inventario_id: String(fila.id),
     lote: fila.lote ?? null,
     caducidad: fila.caducidad ?? null,
@@ -193,7 +203,8 @@ export async function registrarMovimiento(m: MovimientoManual): Promise<Resultad
         .eq('id', m.inventario_id)
         .maybeSingle()
       if (error) return { error: error.message }
-      enSistema = Number(data?.existencia ?? 0)
+      const fila = data as { existencia: number | null } | null
+      enSistema = Number(fila?.existencia ?? 0)
     }
 
     cantidadFirmada = tresDecimales(cantidad - enSistema)

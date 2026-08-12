@@ -240,11 +240,18 @@ export interface UsuarioPanel {
 
 // Un lote concreto en una plaza. Es una fila de `inventario`: el mismo
 // producto aparece varias veces, una por lote y caducidad.
+//
+// El mismo objeto se usa en dos sentidos, y por eso las dos cantidades son
+// opcionales:
+//   · `buscar_productos_pos` devuelve `existencia` — lo que HAY en el lote.
+//   · `descontar_fefo` devuelve `cantidad` — lo que SALIÓ de él, y así queda
+//     guardado en `venta_items.lotes` y `traslado_items.lotes`.
 export interface Lote {
   lote: string | null
   caducidad: string | null
   ubicacion: string | null
-  existencia: number
+  existencia?: number
+  cantidad?: number
   sucursal?: string | null
   costo?: number | null
 }

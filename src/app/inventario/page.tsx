@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { PlusIcon, MagnifyingGlassIcon, ArrowUpTrayIcon } from '@heroicons/react/20/solid'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { UBICACIONES, SUCURSALES } from '@/lib/constantes'
 
@@ -77,11 +77,20 @@ export default async function InventarioPage({
             {rows.length} registros · {piezasTotales.toLocaleString('es-MX')} piezas
           </p>
         </div>
-        <Link href="/inventario/nuevo"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
-          <PlusIcon className="w-5 h-5" />
-          Agregar producto
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {/* Los códigos de barras de Aspel entran por aquí; sin ellos el POS
+              no puede escanear (minuta 22). */}
+          <Link href="/inventario/importar"
+            className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors">
+            <ArrowUpTrayIcon className="w-5 h-5 text-gray-400" />
+            Importar de Aspel
+          </Link>
+          <Link href="/inventario/nuevo"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
+            <PlusIcon className="w-5 h-5" />
+            Agregar producto
+          </Link>
+        </div>
       </div>
 
       {/* Buscador + filtros */}
