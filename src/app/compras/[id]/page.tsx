@@ -49,7 +49,7 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
     supabase.from('compra_items').select('*').eq('compra_id', id).order('posicion'),
   ])
 
-  if (compraRes.error && /relation|column/i.test(compraRes.error.message)) {
+  if (compraRes.error && /relation|column|function|schema cache|does not exist|no existe/i.test(compraRes.error.message)) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">

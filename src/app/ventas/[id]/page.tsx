@@ -30,7 +30,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
   // Si la vista todavía no existe es que falta la migración; se distingue de
   // "la venta no existe" para no mandar un 404 engañoso.
-  const errorEsquema = ventaRes.error && /relation|column|function/i.test(ventaRes.error.message)
+  const errorEsquema = ventaRes.error && /relation|column|function|schema cache|does not exist|no existe/i.test(ventaRes.error.message)
   if (errorEsquema) {
     return (
       <div className="p-8">

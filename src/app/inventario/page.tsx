@@ -149,7 +149,7 @@ export default async function InventarioPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relationship|column/i.test(error.message) && (
+          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
             <p className="mt-2 text-sm">
               Falta correr <code className="font-mono">supabase/reunion-catalogo-sucursales.sql</code> en el SQL Editor de Supabase.
             </p>

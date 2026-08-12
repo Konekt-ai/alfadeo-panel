@@ -125,7 +125,7 @@ export default async function TrasladoDetallePage({
 
   // Si la migración no está corrida, el error es de esquema y hay que
   // decirlo; si simplemente no existe el folio, es un 404.
-  if (error && /relation|column|function/i.test(error.message)) {
+  if (error && /relation|column|function|schema cache|does not exist|no existe/i.test(error.message)) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
@@ -203,7 +203,7 @@ export default async function TrasladoDetallePage({
       {errorRpc && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {errorRpc}
-          {/relation|column|function/i.test(errorRpc) && (
+          {/relation|column|function|schema cache|does not exist|no existe/i.test(errorRpc) && (
             <p className="mt-2 text-sm">
               Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
             </p>

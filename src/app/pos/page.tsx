@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 // Esta página sólo resuelve el contexto —quién cobra, en qué plaza— y se
 // lo pasa al componente de cliente, que es donde vive la caja.
 export default async function POSPage() {
-  const [sucursal, { data: sucursales }, { data: usuarios }] = await Promise.all([
+  const [sucursal, { data: sucursales }, usuariosRes] = await Promise.all([
     resolverSucursal(),
     supabase.from('sucursales').select('id, clave, nombre')
       .eq('activo', true).order('es_matriz', { ascending: false }),
@@ -20,6 +20,31 @@ export default async function POSPage() {
       .select('id, nombre, iniciales, rol, sucursal_id, activo')
       .eq('activo', true).order('nombre'),
   ])
+
+  const usuarios = usuariosRes.data
+
+  // Sin la migración de operación no hay `usuarios_panel`, el selector de
+  // cajero sale vacío y no se puede cobrar. Antes fallaba callado y parecía
+  // que el POS estaba roto; ahora dice qué falta.
+  if (usuariosRes.error) {
+    const faltaMigracion = /relation|column|function|schema cache|does not exist|no existe/i
+      .test(usuariosRes.error.message)
+    return (
+      <div className="p-8">
+        <h1 className="text-2xl font-semibold text-gray-900">Punto de venta</h1>
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5 mt-6 text-base">
+          {usuariosRes.error.message}
+          {faltaMigracion && (
+            <p className="mt-2 text-sm">
+              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en
+              el SQL Editor de Supabase. Sin eso no existen las ventas, los movimientos ni
+              el control de lotes.
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (!sucursal) {
     return (
