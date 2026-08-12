@@ -136,22 +136,22 @@ y en ese perfil Windows bloquea todo lo entrante.
 La IP viene de DHCP. Si el módem se la cambia, los celulares dejan de entrar:
 conviene reservarla en el router.
 
-## Desplegar en Vercel
+## No va en la nube
 
-1. **Importar el repo** en [vercel.com/new](https://vercel.com/new). Detecta
-   Next.js solo; no hay que tocar los comandos de build.
-2. **Settings → Environment Variables**, agrega las dos de arriba en
-   *Production* (y en *Preview* si quieres que los previews funcionen).
-3. **Deploy.**
+**Decisión tomada:** el panel vive sólo en la computadora de la empresa. No
+se publica en internet.
 
-El panel queda accesible para cualquiera que tenga la URL. Si más adelante
-quieren restringirlo, en `PENDIENTES.md` están las opciones.
+Estuvo un tiempo en Vercel, pero era para enseñarle avances al cliente, no
+para operar. Ya se dio de baja.
+
+Lo único que sale a internet es la conexión a Supabase, que es saliente: nadie
+entra desde fuera.
 
 ### Nota sobre `output: 'standalone'`
 
-Está apagado por defecto y sólo se activa con `BUILD_STANDALONE=1`, que pone el
-`Dockerfile`. Vercel arma su propio bundle y no lo necesita; además, con
-standalone encendido `next start` no funciona.
+Está apagado por defecto y sólo se activa con `BUILD_STANDALONE=1`, que pone
+el `Dockerfile`. Con standalone encendido `next start` no funciona, y es
+justo lo que usa la computadora del mostrador — así que déjalo apagado.
 
 ## Base de datos
 

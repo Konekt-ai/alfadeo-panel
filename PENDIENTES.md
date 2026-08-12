@@ -119,25 +119,31 @@ Nada de esto es programación, pero sin ello el sistema opera a medias:
 
 ---
 
-## Seguridad — leer antes de publicar
+## Seguridad
 
 ### El panel no tiene control de acceso
 
-Decisión tomada: va sin login. Quien tenga la URL de Vercel entra, y el panel
-consulta Supabase con la *service role key*, que salta todas las políticas RLS.
+Decisión tomada: va sin login. El panel consulta Supabase con la *service role
+key*, que salta todas las políticas RLS.
 
-**Esto pesa más ahora que antes.** Antes el panel sólo leía; ahora cualquiera
-con la URL puede vender, mover inventario y registrar pagos.
+Lo que **sí** acota el riesgo: el panel ya no está en internet. Vive en la
+computadora del mostrador y sólo se alcanza desde la red de la oficina. La
+salida a Supabase es saliente; nadie entra desde fuera.
+
+Lo que **no** acota: cualquiera conectado a esa WiFi que abra
+`http://192.168.1.116:3002` puede vender, mover inventario y registrar pagos.
+Eso incluye a quien le hayan pasado la clave del WiFi.
 
 El selector de usuario del header **no es seguridad**: es una firma para saber
 quién movió qué (punto 8). Cualquiera puede elegir cualquier nombre.
 
 Opciones, en orden de esfuerzo:
 
-1. **Vercel Deployment Protection** — cero código, se activa en *Settings →
-   Deployment Protection*. Requiere plan Pro para proteger producción.
+1. **Cerrarlo a esa sola computadora** — quitar la regla del firewall y que
+   Next escuche sólo en `localhost`. Un comando. El costo es que se pierde el
+   punto 11: vender desde el celular.
 2. **Contraseña compartida** — un `middleware.ts` que valida una cookie contra
-   una variable de entorno. Un par de archivos.
+   una variable de entorno. Un par de archivos. Deja pasar los celulares.
 3. **Supabase Auth, un usuario por persona** — es lo que hace falta de todos
    modos para que la firma del punto 8 sea confiable.
    `usuarios_panel.auth_uid` ya está reservada para amarrar cada persona con su
