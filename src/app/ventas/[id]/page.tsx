@@ -253,12 +253,22 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             )}
           </div>
 
-          <Link
-            href={`/movimientos?referencia=${venta.venta_id}`}
-            className="inline-block text-base font-medium text-[#003366] hover:underline"
-          >
-            Ver los movimientos de inventario de esta venta →
-          </Link>
+          <div className="flex flex-wrap gap-4">
+            <Link
+              href={`/movimientos?referencia=${venta.venta_id}`}
+              className="text-base font-medium text-[#003366] hover:underline"
+            >
+              Ver los movimientos de inventario de esta venta →
+            </Link>
+            {/* Reimprimir en la térmica del mostrador. */}
+            <Link
+              href={`/ventas/${venta.venta_id}/ticket`}
+              target="_blank"
+              className="text-base font-medium text-[#003366] hover:underline"
+            >
+              Imprimir ticket →
+            </Link>
+          </div>
         </div>
 
         {/* Acciones */}

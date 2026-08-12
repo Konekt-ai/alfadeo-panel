@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useTransition, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import {
-  MagnifyingGlassIcon, PlusIcon, MinusIcon, XMarkIcon, TrashIcon,
+  MagnifyingGlassIcon, PlusIcon, MinusIcon, XMarkIcon, TrashIcon, PrinterIcon,
 } from '@heroicons/react/20/solid'
 import {
   ShoppingCartIcon, CheckCircleIcon, ExclamationTriangleIcon, UserIcon,
@@ -288,6 +288,15 @@ export default function POSClient({
             >
               Nueva venta
             </button>
+            {/* Se abre en ventana aparte y se imprime solo: la caja no pierde
+                el foco del buscador ni el carrito de la siguiente venta. */}
+            <button
+              onClick={() => window.open(`/ventas/${ticket.venta_id}/ticket?auto=1`, '_blank', 'width=420,height=640')}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors"
+            >
+              <PrinterIcon className="w-5 h-5 text-gray-400" />
+              Imprimir ticket
+            </button>
             <Link
               href={`/ventas/${ticket.venta_id}`}
               className="flex-1 text-center px-5 py-3 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors"
@@ -305,7 +314,7 @@ export default function POSClient({
   const inputCls = 'w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
 
   return (
-    <div className="p-4 md:p-8 pb-40 lg:pb-8">
+    <div className="p-4 md:p-6 xl:p-8 pb-44 xl:pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Punto de venta</h1>
@@ -343,7 +352,7 @@ export default function POSClient({
         </div>
       )}
 
-      <div className="grid lg:grid-cols-[1fr_400px] gap-6 items-start">
+      <div className="grid xl:grid-cols-[1fr_380px] gap-5 xl:gap-6 items-start">
         {/* Buscador + resultados */}
         <div className="space-y-4">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -429,7 +438,7 @@ export default function POSClient({
         </div>
 
         {/* Carrito */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden lg:sticky lg:top-4">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden xl:sticky xl:top-4">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <ShoppingCartIcon className="w-5 h-5 text-gray-400" />
             <span className="text-base font-semibold text-gray-900">
@@ -445,7 +454,7 @@ export default function POSClient({
             )}
           </div>
 
-          <div className="divide-y divide-gray-50 max-h-[50vh] overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-[42vh] xl:max-h-[50vh] overflow-y-auto">
             {carrito.length === 0 && (
               <div className="py-16 text-center text-gray-400 text-base px-5">
                 Escanea o busca un producto para empezar.
@@ -544,7 +553,7 @@ export default function POSClient({
               <button
                 onClick={() => setPanelCobro(true)}
                 disabled={sobregiro.length > 0}
-                className="hidden lg:block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="hidden xl:block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Cobrar {pesos(totales.total)}
               </button>
@@ -555,7 +564,7 @@ export default function POSClient({
 
       {/* Barra fija del celular */}
       {carrito.length > 0 && (
-        <div className="lg:hidden fixed bottom-16 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-lg">
+        <div className="xl:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-lg">
           <div className="min-w-0">
             <div className="text-sm text-gray-500">{carrito.length} partidas</div>
             <div className="text-xl font-semibold text-gray-900">{pesos(totales.total)}</div>
@@ -573,7 +582,7 @@ export default function POSClient({
       {/* Panel de cobro */}
       {panelCobro && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl max-h-[94vh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
               <h2 className="text-lg font-semibold text-gray-900">Cobrar {pesos(totales.total)}</h2>
               <button onClick={() => setPanelCobro(false)} className="text-gray-400 hover:text-gray-700 p-1">
