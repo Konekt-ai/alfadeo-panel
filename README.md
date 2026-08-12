@@ -75,6 +75,67 @@ npm run dev                    # http://localhost:3002
 | `SUPABASE_URL` | URL del proyecto en Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key. **No** la anon key. Sólo servidor |
 
+## La computadora del mostrador
+
+El panel corre **en la computadora de la empresa**, no en la nube. La base
+sigue siendo Supabase, así que de todos modos necesita internet; lo único
+local es el servidor web.
+
+| | |
+| --- | --- |
+| Equipo | `DESKTOP-17PH81O` · Windows 10 22H2 |
+| En esa máquina | `http://localhost:3002` |
+| Desde el WiFi de la oficina | `http://192.168.1.116:3002` |
+| Todo vive en | `C:\alfadeo` |
+| Log del servidor | `C:\alfadeo\panel.log` (se rota solo a los 5 MB) |
+
+```text
+C:\alfadeo\
+  node\               Node LTS portable
+  git\                Git portable
+  panel\              este repo, clonado
+  iniciar-panel.ps1   lo que corre la tarea programada
+  actualizar.ps1      traer cambios y reiniciar
+  prueba-lector.html  probar el lector sin el sistema arriba
+```
+
+Node y Git van **portables** porque `winget` está roto en esa máquina y los
+instaladores piden elevación. Se quitan borrando la carpeta.
+
+### Traer cambios
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\alfadeo\actualizar.ps1
+```
+
+Hace `git fetch` y, si no hay nada nuevo, no toca nada: no tiene caso tumbar
+la caja para recompilar lo mismo. Compila **antes** de reiniciar, así que si
+la compilación truena el mostrador sigue trabajando con la versión anterior.
+Con `-Forzar` recompila aunque no haya cambios.
+
+La máquina es un destino de despliegue, no un lugar donde se programa: usa
+`reset --hard`, nunca `pull`. No puede quedar un conflicto de merge a media
+mañana. Si alguien editó archivos ahí, los enumera antes de descartarlos.
+
+### Arranque
+
+Una tarea programada, **ALFA-DEO Panel**, lo levanta al iniciar sesión —
+no al arrancar Windows, porque eso obligaría a guardar la contraseña dentro
+de la tarea. Reintenta 3 veces si se cae.
+
+Se lanza `next start` directo con node, no `npm run start`: npm mete un
+`cmd.exe` de por medio y luego el proceso hijo queda huérfano ocupando el
+puerto.
+
+### Red
+
+El puerto 3002 está abierto en el firewall para perfiles **Privado** y de
+dominio, y la WiFi de la oficina se marcó como Privada — venía como Pública,
+y en ese perfil Windows bloquea todo lo entrante.
+
+La IP viene de DHCP. Si el módem se la cambia, los celulares dejan de entrar:
+conviene reservarla en el router.
+
 ## Desplegar en Vercel
 
 1. **Importar el repo** en [vercel.com/new](https://vercel.com/new). Detecta
