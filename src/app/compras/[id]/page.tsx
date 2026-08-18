@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { sql, uno, faltaMigracion } from '@/lib/db'
 import { pesos, formatDia } from '@/lib/utils'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
 import RecibirCompra from './RecibirCompra'
@@ -39,33 +39,44 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
   const { id } = await params
 
   const [compraRes, itemsRes] = await Promise.all([
-    supabase.from('compras').select(`
-      id, folio, fecha, estado, subtotal, iva, total, moneda,
-      factura_serie, factura_folio, factura_uuid, emisor_rfc, emisor_nombre,
-      xml_origen, usuario, notas,
-      proveedores ( nombre ),
-      sucursales ( clave, nombre )
-    `).eq('id', id).maybeSingle(),
-    supabase.from('compra_items').select('*').eq('compra_id', id).order('posicion'),
+    uno<CompraDetalle>(
+      `select c.id, c.folio, c.fecha, c.estado, c.subtotal, c.iva, c.total,
+              c.moneda, c.factura_serie, c.factura_folio, c.factura_uuid,
+              c.emisor_rfc, c.emisor_nombre, c.xml_origen, c.usuario, c.notas,
+              case when p.id is null then null
+                   else json_build_object('nombre', p.nombre) end as proveedores,
+              case when s.id is null then null
+                   else json_build_object('clave', s.clave, 'nombre', s.nombre) end as sucursales
+         from compras c
+         left join proveedores p on p.id = c.proveedor_id
+         left join sucursales  s on s.id = c.sucursal_id
+        where c.id = $1::uuid`,
+      [id]
+    ),
+    sql<CompraItem>(
+      `select * from compra_items where compra_id = $1::uuid order by posicion`,
+      [id]
+    ),
   ])
 
-  if (compraRes.error && /relation|column|function|schema cache|does not exist|no existe/i.test(compraRes.error.message)) {
+  if (compraRes.error && faltaMigracion(compraRes.error.message)) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {compraRes.error.message}
           <p className="mt-2 text-sm">
-            Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+            Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
           </p>
         </div>
       </div>
     )
   }
 
-  const compra = compraRes.data as unknown as CompraDetalle | null
+  const compra = compraRes.data
   if (!compra) notFound()
 
-  const items = (itemsRes.data ?? []) as CompraItem[]
+  const items = itemsRes.data
   const sinLigar = items.filter(i => !i.producto_id)
   const est = ESTADO[compra.estado] ?? { label: compra.estado, color: 'bg-gray-100 text-gray-700' }
 

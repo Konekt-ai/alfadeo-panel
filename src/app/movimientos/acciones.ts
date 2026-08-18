@@ -12,7 +12,7 @@
 // mensaje se devuelve tal cual y la pantalla lo pinta sin tocarlo.
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { sql, qx, uno } from '@/lib/db'
 import { usuarioActual, fijarUsuario } from '@/lib/usuario'
 import { movimientoLabel } from '@/lib/utils'
 import type { ProductoPOS } from '@/lib/types'
@@ -76,14 +76,13 @@ export async function buscarProductos(
   const texto = q.trim()
   if (texto.length < 2) return { productos: [] }
 
-  const { data, error } = await supabase.rpc('buscar_productos_pos', {
-    q: texto,
-    p_sucursal: sucursalId || null,
-    limite: 12,
-  })
+  const { data, error } = await sql<ProductoPOS>(
+    `select * from buscar_productos_pos($1, $2::uuid, $3)`,
+    [texto, sucursalId || null, 12]
+  )
 
   if (error) return { productos: [], error: error.message }
-  return { productos: (data ?? []) as ProductoPOS[] }
+  return { productos: data }
 }
 
 /**
@@ -97,25 +96,25 @@ export async function lotesDeProducto(
 ): Promise<{ lotes: LoteDisponible[]; error?: string }> {
   if (!productoId || !sucursalId) return { lotes: [] }
 
-  const { data, error } = await supabase
-    .from('inventario')
-    .select('id, lote, caducidad, ubicacion, existencia, costo_unitario')
-    .eq('producto_id', productoId)
-    .eq('sucursal_id', sucursalId)
-    .gt('existencia', 0)
-    .order('caducidad', { ascending: true, nullsFirst: false })
-
-  if (error) return { lotes: [], error: error.message }
-
-  // El cliente de Supabase no tiene tipos generados: se le pone forma aquí.
-  const filas = (data ?? []) as Array<{
+  // Orden FEFO: el que caduca antes primero, y los sin caducidad al final.
+  const { data: filas, error } = await sql<{
     id: string
     lote: string | null
     caducidad: string | null
     ubicacion: string | null
     existencia: number | null
     costo_unitario: number | null
-  }>
+  }>(
+    `select id, lote, caducidad, ubicacion, existencia, costo_unitario
+       from inventario
+      where producto_id = $1::uuid
+        and sucursal_id = $2::uuid
+        and existencia > 0
+      order by caducidad asc nulls last`,
+    [productoId, sucursalId]
+  )
+
+  if (error) return { lotes: [], error: error.message }
 
   const lotes: LoteDisponible[] = filas.map(fila => ({
     inventario_id: String(fila.id),
@@ -157,20 +156,25 @@ export async function registrarMovimiento(m: MovimientoManual): Promise<Resultad
 
   // ---- Salida sin lote concreto: el que caduca primero ------------------
   if (m.tipo === 'salida' && m.fefo) {
-    const { data, error } = await supabase.rpc('descontar_fefo', {
-      p_producto_id: m.producto_id,
-      p_sucursal_id: m.sucursal_id,
-      p_cantidad: tresDecimales(cantidad),
-      p_tipo: 'salida',
-      p_motivo: motivo,
-      p_referencia_tipo: 'manual',
-      p_referencia_id: null,
-      p_usuario: usuario,
-    })
-
-    if (error) return { error: error.message }
-
-    const usados = (data ?? []) as Array<{ lote: string | null; cantidad: number }>
+    // Notación con nombre: son ocho parámetros y posicionalmente sería
+    // imposible de leer.
+    let usados: Array<{ lote: string | null; cantidad: number }> = []
+    try {
+      const filas = await qx<{ r: Array<{ lote: string | null; cantidad: number }> }>(
+        `select descontar_fefo(
+                  p_producto_id     => $1::uuid,
+                  p_sucursal_id     => $2::uuid,
+                  p_cantidad        => $3,
+                  p_tipo            => 'salida',
+                  p_motivo          => $4,
+                  p_referencia_tipo => 'manual',
+                  p_usuario         => $5) as r`,
+        [m.producto_id, m.sucursal_id, tresDecimales(cantidad), motivo, usuario]
+      )
+      usados = filas[0]?.r ?? []
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
     const detalle = usados
       .map(l => `${l.lote || 'sin lote'} (${piezas(Number(l.cantidad ?? 0))})`)
       .join(', ')
@@ -197,13 +201,11 @@ export async function registrarMovimiento(m: MovimientoManual): Promise<Resultad
     // vio el navegador hace un minuto.
     let enSistema = 0
     if (m.inventario_id) {
-      const { data, error } = await supabase
-        .from('inventario')
-        .select('existencia')
-        .eq('id', m.inventario_id)
-        .maybeSingle()
+      const { data: fila, error } = await uno<{ existencia: number | null }>(
+        `select existencia from inventario where id = $1::uuid`,
+        [m.inventario_id]
+      )
       if (error) return { error: error.message }
-      const fila = data as { existencia: number | null } | null
       enSistema = Number(fila?.existencia ?? 0)
     }
 
@@ -216,25 +218,39 @@ export async function registrarMovimiento(m: MovimientoManual): Promise<Resultad
     }
   }
 
-  const { error } = await supabase.rpc('registrar_movimiento', {
-    p_producto_id: m.producto_id,
-    p_sucursal_id: m.sucursal_id,
-    p_cantidad: cantidadFirmada,
-    p_tipo: m.tipo,
-    p_lote: m.lote?.trim() || null,
-    p_ubicacion: m.ubicacion?.trim() || null,
-    p_caducidad: m.caducidad || null,
-    // El costo sólo tiene sentido cuando entra mercancía.
-    p_costo_unitario: cantidadFirmada > 0 ? costo : null,
-    p_motivo: motivo,
-    p_referencia_tipo: 'manual',
-    p_referencia_id: null,
-    p_usuario: usuario,
-    p_permitir_negativo: false,
-    p_inventario_id: m.inventario_id || null,
-  })
-
-  if (error) return { error: error.message }
+  try {
+    await qx(
+      `select registrar_movimiento(
+                p_producto_id     => $1::uuid,
+                p_sucursal_id     => $2::uuid,
+                p_cantidad        => $3,
+                p_tipo            => $4,
+                p_lote            => $5,
+                p_ubicacion       => $6,
+                p_caducidad       => $7::date,
+                p_costo_unitario  => $8,
+                p_motivo          => $9,
+                p_referencia_tipo => 'manual',
+                p_usuario         => $10,
+                p_inventario_id   => $11::uuid)`,
+      [
+        m.producto_id,
+        m.sucursal_id,
+        cantidadFirmada,
+        m.tipo,
+        m.lote?.trim() || null,
+        m.ubicacion?.trim() || null,
+        m.caducidad || null,
+        // El costo sólo tiene sentido cuando entra mercancía.
+        cantidadFirmada > 0 ? costo : null,
+        motivo,
+        usuario,
+        m.inventario_id || null,
+      ]
+    )
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
 
   revalidatePath('/movimientos')
   revalidatePath('/inventario')

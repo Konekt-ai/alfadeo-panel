@@ -89,12 +89,46 @@ if ($tarea) {
 
 Write-Output ""
 Write-Output "--- BASE DE DATOS ---"
-& "$PSScriptRoot\verificar-base.ps1" -Panel $cfg.Panel
+
+$svc = Get-Service "alfadeo-postgres" -ErrorAction SilentlyContinue
+if ($svc) {
+  Write-Output ("  servicio  " + $svc.Status + " (inicio " + $svc.StartType + ")")
+} else {
+  Write-Output "  servicio  NO EXISTE - corre instalacion\instalar-postgres.ps1"
+}
+
+# El tamano de la base y sobre todo CUANDO fue el ultimo respaldo. Lo
+# segundo importa mas de lo que parece: la base vive en un escritorio.
+$PSQL = Join-Path $cfg.Raiz "pgsql\bin\psql.exe"
+$envLocal = Join-Path $cfg.Panel ".env.local"
+$dburl = $null
+foreach ($l in (Get-Content $envLocal -ErrorAction SilentlyContinue)) {
+  if ($l -match '^\s*DATABASE_URL\s*=\s*(.+?)\s*$') { $dburl = $Matches[1].Trim('"').Trim("'") }
+}
+if ((Test-Path $PSQL) -and $dburl) {
+  $tam = & $PSQL $dburl -t -A -c "select pg_size_pretty(pg_database_size(current_database()))" 2>$null
+  if ($LASTEXITCODE -eq 0 -and $tam) { Write-Output ("  tamano    " + ($tam | Select-Object -First 1).Trim()) }
+}
+
+$dirResp = Join-Path $cfg.Raiz "respaldos"
+$ultimo = Get-ChildItem $dirResp -Filter "alfadeo_*.sql.gz" -ErrorAction SilentlyContinue |
+          Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($ultimo) {
+  $horas = [int]((Get-Date) - $ultimo.LastWriteTime).TotalHours
+  $aviso = if ($horas -gt 48) { "   OJO: hace mas de dos dias" } else { "" }
+  Write-Output ("  respaldo  " + $ultimo.LastWriteTime.ToString("yyyy-MM-dd HH:mm") + "  (" + $horas + " h)" + $aviso)
+} else {
+  Write-Output "  respaldo  NUNCA - corre: respaldo"
+}
+
+& "$PSScriptRoot\verificar-base.ps1" -Raiz $cfg.Raiz
 
 Write-Output ""
 Write-Output "--- COMANDOS ---"
 Write-Output "  actualizar   traer cambios de GitHub, recompilar y reiniciar"
 Write-Output "  reiniciar    reiniciar sin traer cambios"
+Write-Output "  respaldo     respaldar la base ahora"
 Write-Output "  log          ultimas 40 lineas del log"
+Write-Output "  sql          consola de SQL contra la base"
 Write-Output "  estado       esto"
 Write-Output ""

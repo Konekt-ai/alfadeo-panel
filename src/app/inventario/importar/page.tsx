@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { uno } from '@/lib/db'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
 import ImportadorAspel from './ImportadorAspel'
 
@@ -8,12 +8,17 @@ export const dynamic = 'force-dynamic'
 export default async function ImportarPage() {
   // Cuántos productos siguen sin código de barras. Es el número que dice si
   // el escaneo del POS ya sirve o todavía no (minuta 22).
-  const [{ count: total }, { count: conCodigo }] = await Promise.all([
-    supabase.from('productos').select('id', { count: 'exact', head: true }),
-    supabase.from('productos').select('id', { count: 'exact', head: true }).not('codigo_barras', 'is', null),
-  ])
+  // Los dos conteos en una sola consulta: es una fila, no hace falta ir dos
+  // veces a la base.
+  const { data: cuentas } = await uno<{ total: number; con_codigo: number }>(
+    `select count(*)::int as total,
+            count(codigo_barras)::int as con_codigo
+       from productos`
+  )
 
-  const sinCodigo = (total ?? 0) - (conCodigo ?? 0)
+  const total = cuentas?.total ?? 0
+  const conCodigo = cuentas?.con_codigo ?? 0
+  const sinCodigo = total - conCodigo
 
   return (
     <div className="p-8">

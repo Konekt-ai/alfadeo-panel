@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import {
   MagnifyingGlassIcon, ArrowTopRightOnSquareIcon, ChatBubbleLeftRightIcon,
   ExclamationTriangleIcon, ClockIcon, BanknotesIcon, UserIcon, DocumentTextIcon,
@@ -76,17 +76,25 @@ export default async function CobranzaPage({
   //  · las ventas que todavía deben algo (para el botón de pago, el enlace de
   //    cada alerta y el folio que se cita por WhatsApp).
   const [ecRes, alertasRes, ventasRes] = await Promise.all([
-    supabase.from('v_estado_cuenta_cliente').select('*').order('saldo_vencido', { ascending: false }),
-    supabase.from('v_alertas').select('*').in('tipo', ['cobranza_vencida', 'cobranza_por_vencer']),
-    supabase.from('v_ventas_cobranza').select('*')
-      .in('estado_cobranza', ['vencida', 'por_vencer', 'pendiente'])
-      .order('dias_vencida', { ascending: false }),
+    sql<EstadoCuentaCliente>(
+      `select * from v_estado_cuenta_cliente order by saldo_vencido desc`
+    ),
+    sql<Alerta>(
+      `select * from v_alertas where tipo = any($1)`,
+      [['cobranza_vencida', 'cobranza_por_vencer']]
+    ),
+    sql<VentaCobranza>(
+      `select * from v_ventas_cobranza
+        where estado_cobranza = any($1)
+        order by dias_vencida desc`,
+      [['vencida', 'por_vencer', 'pendiente']]
+    ),
   ])
 
   const error = ecRes.error ?? alertasRes.error ?? ventasRes.error
-  const clientes = (ecRes.data ?? []) as EstadoCuentaCliente[]
-  const alertas = (alertasRes.data ?? []) as Alerta[]
-  const ventasPendientes = (ventasRes.data ?? []) as VentaCobranza[]
+  const clientes = ecRes.data
+  const alertas = alertasRes.data
+  const ventasPendientes = ventasRes.data
 
   // Ventas con saldo agrupadas por cliente, ya ordenadas de más atrasada a
   // menos: la primera es la que se cita en el mensaje de cobranza.
@@ -180,9 +188,10 @@ export default async function CobranzaPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

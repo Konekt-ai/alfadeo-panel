@@ -45,18 +45,39 @@ $log = @'
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content '__LOG__' -Tail 40"
 '@
 
+$respaldo = @'
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "__INS__\respaldo.ps1" -Raiz "__RAIZ__" %*
+'@
+
+$instalarBase = @'
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "__INS__\instalar-base.ps1" -Raiz "__RAIZ__" %*
+'@
+
+$psqlCmd = @'
+@echo off
+rem Consola de SQL contra la base del panel. Para consultar a mano.
+for /f "tokens=1,* delims==" %%a in ('findstr /b "DATABASE_URL=" "__PANEL__\.env.local"') do set "DBURL=%%b"
+"__RAIZ__\pgsql\bin\psql.exe" "%DBURL%" %*
+'@
+
 $cmds = @{
-  "actualizar" = $actualizar
-  "estado"     = $estado
-  "reiniciar"  = $reiniciar
-  "log"        = $log
+  "actualizar"    = $actualizar
+  "estado"        = $estado
+  "reiniciar"     = $reiniciar
+  "log"           = $log
+  "respaldo"      = $respaldo
+  "instalar-base" = $instalarBase
+  "sql"           = $psqlCmd
 }
 
 foreach ($n in $cmds.Keys) {
-  $txt = $cmds[$n].Replace("__INS__",  $ins).
-                   Replace("__TMP__",  $tmp).
-                   Replace("__RAIZ__", $cfg.Raiz).
-                   Replace("__LOG__",  (Get-LogPath $cfg))
+  $txt = $cmds[$n].Replace("__INS__",   $ins).
+                   Replace("__TMP__",   $tmp).
+                   Replace("__RAIZ__",  $cfg.Raiz).
+                   Replace("__PANEL__", $cfg.Panel).
+                   Replace("__LOG__",   (Get-LogPath $cfg))
   # ASCII a proposito: cmd.exe interpreta los .cmd con la codepage de la
   # consola, y un acento en UTF-8 sale como basura.
   Set-Content -Path (Join-Path $cfg.Raiz ($n + ".cmd")) -Value $txt -Encoding ASCII

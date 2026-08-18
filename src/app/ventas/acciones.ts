@@ -12,7 +12,7 @@
 // porque los `raise exception` de Postgres ya vienen en español.
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { qx, uno } from '@/lib/db'
 import { usuarioActual } from '@/lib/usuario'
 import { pesos } from '@/lib/utils'
 import type { EstadoVenta, FacturaEmisor, MetodoPago } from '@/lib/types'
@@ -57,24 +57,29 @@ export async function registrarFactura(input: {
     return { error: 'El UUID no tiene el formato de un folio fiscal (8-4-4-4-12). Cópialo del PDF o del XML.' }
   }
 
-  const ahora = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('ventas')
-    .update({
-      factura_emisor: emisor,
-      factura_serie: input.serie.trim() || null,
-      factura_folio: input.folio.trim() || null,
-      factura_uuid: uuid,
-      requiere_factura: true,
-      facturado_en: ahora,
-      updated_at: ahora,
-    })
-    .eq('id', input.ventaId)
-    .neq('estado', 'cancelada')
-    .select('id')
+  // `returning id` cumple la misma función que el `.select()` de antes:
+  // distinguir "no existe / está cancelada" de "sí se actualizó".
+  let data: Array<{ id: string }>
+  try {
+    data = await qx<{ id: string }>(
+      `update ventas
+          set factura_emisor   = $1,
+              factura_serie    = $2,
+              factura_folio    = $3,
+              factura_uuid     = $4,
+              requiere_factura = true,
+              facturado_en     = now(),
+              updated_at       = now()
+        where id = $5::uuid
+          and estado <> 'cancelada'
+        returning id`,
+      [emisor, input.serie.trim() || null, input.folio.trim() || null, uuid, input.ventaId]
+    )
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
 
-  if (error) return { error: error.message }
-  if (!data || data.length === 0) {
+  if (data.length === 0) {
     return { error: 'No se pudo registrar la factura: la venta no existe o está cancelada.' }
   }
 
@@ -96,12 +101,16 @@ export async function cancelarVenta(input: {
     return { error: 'Escribe el motivo de la cancelación: queda asentado en el kardex.' }
   }
 
-  const { error } = await supabase.rpc('cancelar_venta', {
-    p_venta_id: input.ventaId,
-    p_motivo: motivo,
-    p_usuario: usuarioActual() ?? 'panel',
-  })
-  if (error) return { error: error.message }
+  // Si la venta tiene pagos aplicados, la función lo rechaza con un mensaje
+  // en español; se deja pasar tal cual.
+  try {
+    await qx(
+      `select cancelar_venta($1::uuid, $2, $3)`,
+      [input.ventaId, motivo, usuarioActual() ?? 'panel']
+    )
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
 
   refrescar(input.ventaId)
   return { ok: true, mensaje: 'Venta cancelada. Las piezas regresaron a su lote.' }
@@ -126,14 +135,13 @@ export async function registrarPago(input: {
   const fecha = input.fecha.trim()
   if (!SOLO_FECHA.test(fecha)) return { error: 'La fecha del pago no es válida.' }
 
-  const { data, error: errorVenta } = await supabase
-    .from('ventas')
-    .select('id, cliente_id, estado, total')
-    .eq('id', input.ventaId)
-    .maybeSingle()
+  const { data: venta, error: errorVenta } = await uno<{
+    cliente_id: string | null; estado: EstadoVenta; total: number
+  }>(
+    `select cliente_id, estado, total from ventas where id = $1::uuid`,
+    [input.ventaId]
+  )
   if (errorVenta) return { error: errorVenta.message }
-
-  const venta: { cliente_id: string | null; estado: EstadoVenta; total: number } | null = data
   if (!venta) return { error: 'La venta ya no existe.' }
   if (venta.estado === 'cancelada') {
     return { error: 'La venta está cancelada: no admite pagos.' }
@@ -141,14 +149,14 @@ export async function registrarPago(input: {
 
   // El saldo se recalcula aquí y no se confía en el que traía la pantalla:
   // dos personas pueden estar cobrando la misma factura al mismo tiempo.
-  const { data: previos, error: errorPagos } = await supabase
-    .from('pagos')
-    .select('monto')
-    .eq('venta_id', input.ventaId)
+  // La suma la hace Postgres: es una fila en vez de traerlas todas.
+  const { data: acum, error: errorPagos } = await uno<{ pagado: number }>(
+    `select coalesce(sum(monto), 0) as pagado from pagos where venta_id = $1::uuid`,
+    [input.ventaId]
+  )
   if (errorPagos) return { error: errorPagos.message }
 
-  const pagado = ((previos ?? []) as { monto: number | null }[])
-    .reduce((suma, p) => suma + Number(p.monto ?? 0), 0)
+  const pagado = Number(acum?.pagado ?? 0)
   const saldo = Number(venta.total ?? 0) - pagado
 
   if (saldo <= 0.005) return { error: 'Esta venta ya está pagada por completo.' }
@@ -156,17 +164,24 @@ export async function registrarPago(input: {
     return { error: `El monto excede el saldo pendiente (${pesos(saldo)}). Captura ese importe o menos.` }
   }
 
-  const { error } = await supabase.from('pagos').insert({
-    venta_id: input.ventaId,
-    cliente_id: venta.cliente_id,
-    monto,
-    fecha,
-    metodo,
-    referencia: input.referencia.trim() || null,
-    origen: 'manual',
-    usuario: usuarioActual() ?? 'panel',
-  })
-  if (error) return { error: error.message }
+  try {
+    await qx(
+      `insert into pagos (venta_id, cliente_id, monto, fecha, metodo,
+                          referencia, origen, usuario)
+       values ($1::uuid, $2::uuid, $3, $4::date, $5, $6, 'manual', $7)`,
+      [
+        input.ventaId,
+        venta.cliente_id,
+        monto,
+        fecha,
+        metodo,
+        input.referencia.trim() || null,
+        usuarioActual() ?? 'panel',
+      ]
+    )
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
 
   refrescar(input.ventaId)
   return {

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import Link from 'next/link'
 import { PlusIcon, ArrowRightIcon } from '@heroicons/react/20/solid'
 import { SUCURSALES } from '@/lib/constantes'
@@ -62,30 +62,38 @@ export default async function TrasladosPage({
 }) {
   const params = await searchParams
 
-  let consulta = supabase
-    .from('traslados')
-    .select(`
-      id, folio, origen_id, destino_id, estado, paqueteria, guia,
-      fecha_envio, fecha_estimada, fecha_recepcion, usuario, created_at,
-      traslado_items ( id, cantidad )
-    `)
-    .order('created_at', { ascending: false })
-    .limit(200)
+  // Las partidas sólo se usan para contar renglones y sumar piezas: se
+  // resuelve con agregados en vez de traerlas todas.
+  const cond: string[] = []
+  const par: unknown[] = []
+  if (params.estado) { par.push(params.estado); cond.push(`t.estado = $${par.length}`) }
+  const where = cond.length ? `where ${cond.join(' and ')}` : ''
 
-  if (params.estado) consulta = consulta.eq('estado', params.estado)
+  const consulta = sql<FilaTraslado>(
+    `select t.id, t.folio, t.origen_id, t.destino_id, t.estado, t.paqueteria,
+            t.guia, t.fecha_envio, t.fecha_estimada, t.fecha_recepcion,
+            t.usuario, t.created_at,
+            (select count(*) from traslado_items ti where ti.traslado_id = t.id)::int
+              as num_partidas,
+            coalesce((select sum(ti.cantidad) from traslado_items ti
+                       where ti.traslado_id = t.id), 0) as total_piezas
+       from traslados t
+       ${where}
+      order by t.created_at desc
+      limit 200`,
+    par
+  )
 
   // Las plazas se traen aparte: `traslados` apunta dos veces a
   // `sucursales` (origen y destino) y un embed sin desambiguar es
   // frágil. Son dos filas, sale más barato resolverlo en memoria.
   const [{ data, error }, { data: datosPlazas }] = await Promise.all([
     consulta,
-    supabase.from('sucursales').select('id, clave, nombre').order('clave'),
+    sql<Plaza>(`select id, clave, nombre from sucursales order by clave`),
   ])
 
-  // PostgREST no tipa los embeds sin tipos generados; se afirma la forma
-  // que pide el `select` de arriba.
-  const filas = (data ?? []) as unknown as FilaTraslado[]
-  const plazas = (datosPlazas ?? []) as unknown as Plaza[]
+  const filas = data
+  const plazas = datosPlazas
 
   const porId = new Map(plazas.map(p => [p.id, p]))
   const clave = (id: string) => porId.get(id)?.clave ?? '—'
@@ -169,9 +177,10 @@ export default async function TrasladosPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

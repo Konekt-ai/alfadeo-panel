@@ -7,11 +7,11 @@
 // inventario de verdad, por lote y en la misma transacción
 // (`pos_registrar_venta` -> `descontar_fefo` -> `registrar_movimiento`).
 //
-// Todo lo que toca Supabase vive aquí: el POSClient es un componente de
-// cliente y no puede ver la service role key.
+// Todo lo que toca la base vive aquí: el POSClient es un componente de
+// cliente y no puede abrir una conexión a PostgreSQL.
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { sql, qx } from '@/lib/db'
 import { fijarUsuario, fijarSucursal } from '@/lib/usuario'
 import { fechaEntregaEstimada, fechaISO, textoEntrega } from '@/lib/entrega'
 import type { ProductoPOS, TipoCliente, FormaPago } from '@/lib/types'
@@ -47,15 +47,12 @@ export async function buscarProductosPOS(
   // pena el viaje al servidor por una sola letra.
   if (texto.length < 2) return { productos: [] }
 
-  const { data, error } = await supabase.rpc('buscar_productos_pos', {
-    q: texto,
-    p_sucursal: sucursalId,
-    limite: 10,
-  })
+  const { data: filas, error } = await sql<ProductoPOS>(
+    `select * from buscar_productos_pos($1, $2::uuid, $3)`,
+    [texto, sucursalId, 10]
+  )
 
   if (error) return { productos: [], error: error.message }
-
-  const filas = (data ?? []) as ProductoPOS[]
   return {
     productos: filas.map(p => ({
       ...p,
@@ -87,23 +84,25 @@ interface ClienteFila {
 
 /** Buscador simple por nombre o empresa. La venta también puede ir sin cliente. */
 export async function buscarClientesPOS(
-  q: string,
+  busqueda: string,
 ): Promise<{ clientes: ClienteFila[]; error?: string }> {
-  // Las comas y los paréntesis rompen la sintaxis de `.or()` de PostgREST.
-  const texto = q.trim().replace(/[,()%*]/g, ' ').trim()
+  const texto = busqueda.trim()
   if (texto.length < 2) return { clientes: [] }
 
-  const patron = `%${texto}%`
-  const { data, error } = await supabase
-    .from('clientes')
-    .select('id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura')
-    .or(`nombre.ilike.${patron},empresa.ilike.${patron}`)
-    .order('nombre')
-    .limit(8)
+  // El % y el _ son comodines de LIKE: se escapan para que quien teclee
+  // "100%" busque eso y no "cualquier cosa".
+  const patron = '%' + texto.replace(/([%_\\])/g, '\\$1') + '%'
+
+  const { data: filas, error } = await sql<ClienteFila>(
+    `select id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura
+       from clientes
+      where nombre ilike $1 or empresa ilike $1
+      order by nombre
+      limit 8`,
+    [patron]
+  )
 
   if (error) return { clientes: [], error: error.message }
-
-  const filas = (data ?? []) as ClienteFila[]
   return {
     clientes: filas.map(c => ({
       ...c,
@@ -211,26 +210,35 @@ export async function cerrarVentaPOS(entrada: EntradaVenta) {
     })),
   }
 
-  const { data, error } = await supabase.rpc('pos_registrar_venta', { p })
-
   // Los `raise exception` de Postgres vienen en español y son legibles para
-  // el mostrador ("Existencia insuficiente: hay 3 y se intentan sacar 5.").
-  if (error) return { ok: false as const, error: error.message }
-
-  const r = (data ?? null) as RespuestaRPC | null
+  // el mostrador ("Existencia insuficiente: hay 3 y se intentan sacar 5."),
+  // así que se dejan pasar tal cual.
+  let r: RespuestaRPC | null = null
+  try {
+    const filas = await qx<{ r: RespuestaRPC }>(
+      `select pos_registrar_venta($1::jsonb) as r`,
+      [JSON.stringify(p)]
+    )
+    r = filas[0]?.r ?? null
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message }
+  }
   if (!r?.venta_id) {
     return { ok: false as const, error: 'El servidor no devolvió la venta registrada.' }
   }
 
   // De qué lote salió cada producto: se relee `venta_items`, que es donde
   // `descontar_fefo` dejó el detalle (minuta 23).
-  const { data: itemsData } = await supabase
-    .from('venta_items')
-    .select('descripcion, cantidad, precio_unitario, descuento_pct, tasa_iva, subtotal, iva, total, lotes, posicion')
-    .eq('venta_id', r.venta_id)
-    .order('posicion')
+  const { data: itemsData } = await sql<FilaItemVenta>(
+    `select descripcion, cantidad, precio_unitario, descuento_pct, tasa_iva,
+            subtotal, iva, total, lotes, posicion
+       from venta_items
+      where venta_id = $1::uuid
+      order by posicion`,
+    [r.venta_id]
+  )
 
-  const items = ((itemsData ?? []) as FilaItemVenta[]).map(it => ({
+  const items = itemsData.map(it => ({
     descripcion: it.descripcion ?? '—',
     cantidad: num(it.cantidad),
     precio_unitario: num(it.precio_unitario),

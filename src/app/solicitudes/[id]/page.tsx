@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, uno } from '@/lib/db'
 import type { Solicitud } from '@/lib/types'
 import { estadoLabel, estadoColor, urgenciaColor, tipoClienteLabel, canalLabel, formatDate } from '@/lib/utils'
 import Link from 'next/link'
@@ -10,27 +10,45 @@ export const dynamic = 'force-dynamic'
 export default async function DetalleSolicitudPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  const [{ data, error }, { data: cotizaciones }] = await Promise.all([
-    supabase
-      .from('solicitudes')
-      .select(`
-        id, folio, canal, estado, urgencia, ciudad_entrega, responsable,
-        requiere_humano, notas, created_at, updated_at,
-        clientes ( id, nombre, empresa, tipo, ciudad, telefono_wa, correo, created_at ),
-        solicitud_items ( id, descripcion_libre, cantidad, unidad, nota, producto_id )
-      `)
-      .eq('id', id)
-      .single(),
-    supabase
-      .from('cotizaciones')
-      .select('id, folio, estado, total, created_at')
-      .eq('solicitud_id', id)
-      .order('created_at', { ascending: false }),
+  const [{ data: sol, error }, { data: cotizaciones }] = await Promise.all([
+    uno<Solicitud>(
+      `select s.id, s.folio, s.canal, s.estado, s.urgencia, s.ciudad_entrega,
+              s.responsable, s.requiere_humano, s.notas, s.created_at, s.updated_at,
+              s.nivel_urgencia, s.tiempo_entrega, s.vigencia_cotizacion,
+              s.direccion_entrega, s.acepta_seguimiento,
+              case when c.id is null then null else
+                json_build_object(
+                  'id', c.id, 'nombre', c.nombre, 'empresa', c.empresa,
+                  'tipo', c.tipo, 'ciudad', c.ciudad, 'telefono_wa', c.telefono_wa,
+                  'correo', c.correo, 'created_at', c.created_at,
+                  'telefono', c.telefono, 'direccion', c.direccion,
+                  'puesto', c.puesto, 'especificacion', c.especificacion,
+                  'rfc', c.rfc)
+              end as clientes,
+              coalesce((
+                select json_agg(json_build_object(
+                         'id', si.id, 'descripcion_libre', si.descripcion_libre,
+                         'cantidad', si.cantidad, 'unidad', si.unidad,
+                         'nota', si.nota, 'producto_id', si.producto_id,
+                         'categoria', si.categoria, 'marca', si.marca,
+                         'presentacion', si.presentacion))
+                  from solicitud_items si where si.solicitud_id = s.id
+              ), '[]'::json) as solicitud_items
+         from solicitudes s
+         left join clientes c on c.id = s.cliente_id
+        where s.id = $1::uuid`,
+      [id]
+    ),
+    sql<{ id: string; folio: string; estado: string; total: number; created_at: string }>(
+      `select id, folio, estado, total, created_at
+         from cotizaciones
+        where solicitud_id = $1::uuid
+        order by created_at desc`,
+      [id]
+    ),
   ])
 
-  if (error || !data) return notFound()
-
-  const sol = data as unknown as Solicitud
+  if (error || !sol) return notFound()
 
   return (
     <div className="p-4 md:p-8 max-w-4xl">
@@ -80,11 +98,16 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">Datos del cliente</h2>
           <dl className="space-y-4">
             <Field label="Nombre" value={sol.clientes?.nombre} />
+            <Field label="Puesto" value={sol.clientes?.puesto} />
             <Field label="Empresa" value={sol.clientes?.empresa} />
             <Field label="Tipo" value={tipoClienteLabel(sol.clientes?.tipo ?? null)} />
+            <Field label="Especificación" value={sol.clientes?.especificacion} />
+            <Field label="RFC" value={sol.clientes?.rfc} />
             <Field label="Ciudad" value={sol.clientes?.ciudad} />
+            <Field label="Dirección de la empresa" value={sol.clientes?.direccion} />
+            <Field label="Teléfono" value={sol.clientes?.telefono} />
             <div>
-              <dt className="text-xs text-gray-400 mb-1">Teléfono / WhatsApp</dt>
+              <dt className="text-xs text-gray-400 mb-1">WhatsApp</dt>
               <dd>
                 {sol.clientes?.telefono_wa ? (
                   <a
@@ -121,7 +144,14 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">Datos de la solicitud</h2>
           <dl className="space-y-4">
             <Field label="Canal de origen" value={canalLabel(sol.canal)} />
+            <Field
+              label="Nivel de urgencia indicado"
+              value={sol.nivel_urgencia}
+            />
+            <Field label="Tiempo de entrega requerido" value={sol.tiempo_entrega} />
+            <Field label="Vigencia solicitada para la cotización" value={sol.vigencia_cotizacion} />
             <Field label="Ciudad de entrega" value={sol.ciudad_entrega} />
+            <Field label="Dirección de entrega" value={sol.direccion_entrega} />
             <Field label="Responsable asignado" value={sol.responsable} />
             <Field label="Última actualización" value={formatDate(sol.updated_at)} />
             {sol.notas && (
@@ -163,7 +193,14 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
               {sol.solicitud_items.map((item, i) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 text-gray-300 font-mono text-xs">{String(i + 1).padStart(2, '0')}</td>
-                  <td className="px-6 py-4 text-gray-900 font-medium">{item.descripcion_libre ?? '—'}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-gray-900 font-medium">{item.descripcion_libre ?? '—'}</div>
+                    {(item.categoria || item.marca || item.presentacion) && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {[item.categoria, item.marca, item.presentacion].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-gray-600">
                     {item.cantidad != null ? `${item.cantidad}${item.unidad ? ` ${item.unidad}` : ''}` : '—'}
                   </td>

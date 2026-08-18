@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql } from '@/lib/db'
 import type { Solicitud, EstadoSolicitud } from '@/lib/types'
 import { estadoLabel, estadoColor, urgenciaColor, canalLabel, formatDate } from '@/lib/utils'
 import Link from 'next/link'
@@ -18,20 +18,27 @@ export default async function SolicitudesPage({
   searchParams: Promise<{ estado?: string; canal?: string; humano?: string }>
 }) {
   const params = await searchParams
-  let query = supabase
-    .from('solicitudes')
-    .select(`
-      id, folio, canal, estado, urgencia, ciudad_entrega,
-      requiere_humano, notas, created_at, updated_at,
-      clientes ( id, nombre, empresa, tipo, ciudad, telefono_wa, correo )
-    `)
-    .order('created_at', { ascending: false })
+  const cond: string[] = []
+  const par: unknown[] = []
+  if (params.estado) { par.push(params.estado); cond.push(`s.estado = $${par.length}::estado_solicitud`) }
+  if (params.canal)  { par.push(params.canal);  cond.push(`s.canal = $${par.length}::canal_origen`) }
+  if (params.humano === '1') cond.push('s.requiere_humano')
+  const where = cond.length ? `where ${cond.join(' and ')}` : ''
 
-  if (params.estado) query = query.eq('estado', params.estado)
-  if (params.canal) query = query.eq('canal', params.canal)
-  if (params.humano === '1') query = query.eq('requiere_humano', true)
-
-  const { data: solicitudes, error } = await query
+  const { data: solicitudes, error } = await sql<Solicitud>(
+    `select s.id, s.folio, s.canal, s.estado, s.urgencia, s.ciudad_entrega,
+            s.requiere_humano, s.notas, s.created_at, s.updated_at,
+            case when c.id is null then null else
+              json_build_object('id', c.id, 'nombre', c.nombre, 'empresa', c.empresa,
+                                'tipo', c.tipo, 'ciudad', c.ciudad,
+                                'telefono_wa', c.telefono_wa, 'correo', c.correo)
+            end as clientes
+       from solicitudes s
+       left join clientes c on c.id = s.cliente_id
+       ${where}
+      order by s.created_at desc`,
+    par
+  )
 
   const buildUrl = (overrides: Record<string, string | undefined>) => {
     const p = { estado: params.estado, canal: params.canal, humano: params.humano, ...overrides }

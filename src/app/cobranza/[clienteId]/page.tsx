@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { sql, uno, faltaMigracion } from '@/lib/db'
 import {
   ArrowLeftIcon, ArrowTopRightOnSquareIcon, ChatBubbleLeftRightIcon,
   CheckCircleIcon, ExclamationTriangleIcon, ClockIcon, DocumentTextIcon,
@@ -48,16 +48,22 @@ export default async function EstadoCuentaPage({
   const query = await searchParams
 
   const [ecRes, ventasRes, pagosRes] = await Promise.all([
-    supabase.from('v_estado_cuenta_cliente').select('*').eq('cliente_id', clienteId).maybeSingle(),
-    supabase.from('v_ventas_cobranza').select('*').eq('cliente_id', clienteId)
-      .order('fecha', { ascending: false }),
-    supabase.from('pagos').select('*').eq('cliente_id', clienteId)
-      .order('fecha', { ascending: false })
-      .order('created_at', { ascending: false }),
+    uno<EstadoCuentaCliente>(
+      `select * from v_estado_cuenta_cliente where cliente_id = $1::uuid`, [clienteId]
+    ),
+    sql<VentaCobranza>(
+      `select * from v_ventas_cobranza where cliente_id = $1::uuid order by fecha desc`,
+      [clienteId]
+    ),
+    sql<Pago>(
+      `select * from pagos where cliente_id = $1::uuid
+        order by fecha desc, created_at desc`,
+      [clienteId]
+    ),
   ])
 
   const error = ecRes.error ?? ventasRes.error ?? pagosRes.error
-  const ec = ecRes.data as EstadoCuentaCliente | null
+  const ec = ecRes.data
 
   if (error) {
     return (
@@ -67,9 +73,10 @@ export default async function EstadoCuentaPage({
         </Link>
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

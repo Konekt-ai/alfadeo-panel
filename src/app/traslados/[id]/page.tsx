@@ -8,7 +8,7 @@ import {
   CheckCircleIcon,
 } from '@heroicons/react/20/solid'
 import { InformationCircleIcon } from '@heroicons/react/24/outline'
-import { supabase } from '@/lib/supabase'
+import { uno, sql, faltaMigracion } from '@/lib/db'
 import { UBICACIONES } from '@/lib/constantes'
 import { formatDia, formatDate, nombreProducto } from '@/lib/utils'
 import type { EstadoTraslado } from '@/lib/types'
@@ -106,32 +106,53 @@ export default async function TrasladoDetallePage({
   const { id } = await params
   const { error: errorRpc } = await searchParams
 
+  // Las partidas van como json_agg para que el objeto llegue con la misma
+  // forma que tenía con el embebido, y el JSX no cambie. El coalesce a '[]'
+  // importa: json_agg sin filas devuelve NULL, no un arreglo vacío.
   const [{ data, error }, { data: datosPlazas }] = await Promise.all([
-    supabase
-      .from('traslados')
-      .select(`
-        id, folio, origen_id, destino_id, estado, paqueteria, guia,
-        fecha_envio, fecha_estimada, fecha_recepcion, usuario, notas, created_at,
-        traslado_items (
-          id, producto_id, cantidad, lote, caducidad, lotes, posicion,
-          productos ( id, nombre, nombre_comercial, nombre_generico,
-                      concentracion, presentacion, laboratorio )
-        )
-      `)
-      .eq('id', id)
-      .single(),
-    supabase.from('sucursales').select('id, clave, nombre, ciudad'),
+    uno<TrasladoDetalle>(
+      `select t.id, t.folio, t.origen_id, t.destino_id, t.estado, t.paqueteria,
+              t.guia, t.fecha_envio, t.fecha_estimada, t.fecha_recepcion,
+              t.usuario, t.notas, t.created_at,
+              coalesce((
+                select json_agg(json_build_object(
+                         'id', ti.id, 'producto_id', ti.producto_id,
+                         'cantidad', ti.cantidad, 'lote', ti.lote,
+                         'caducidad', ti.caducidad, 'lotes', ti.lotes,
+                         'posicion', ti.posicion,
+                         'productos', case when p.id is null then null else
+                           json_build_object(
+                             'id', p.id, 'nombre', p.nombre,
+                             'nombre_comercial', p.nombre_comercial,
+                             'nombre_generico', p.nombre_generico,
+                             'concentracion', p.concentracion,
+                             'presentacion', p.presentacion,
+                             'laboratorio', p.laboratorio)
+                         end
+                       ) order by ti.posicion)
+                  from traslado_items ti
+                  left join productos p on p.id = ti.producto_id
+                 where ti.traslado_id = t.id
+              ), '[]'::json) as traslado_items
+         from traslados t
+        where t.id = $1::uuid`,
+      [id]
+    ),
+    sql<{ id: string; clave: string; nombre: string; ciudad: string | null }>(
+      `select id, clave, nombre, ciudad from sucursales`
+    ),
   ])
 
   // Si la migración no está corrida, el error es de esquema y hay que
   // decirlo; si simplemente no existe el folio, es un 404.
-  if (error && /relation|column|function|schema cache|does not exist|no existe/i.test(error.message)) {
+  if (error && faltaMigracion(error.message)) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {error.message}
           <p className="mt-2 text-sm">
-            Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+            Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
           </p>
         </div>
       </div>
@@ -203,9 +224,10 @@ export default async function TrasladoDetallePage({
       {errorRpc && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {errorRpc}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(errorRpc) && (
+          {faltaMigracion(errorRpc) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

@@ -112,3 +112,33 @@ function Add-AlPath {
         return "no se pudo ($Ambito requiere admin)"
     }
 }
+
+# ---------------------------------------------------------- ejecutables ---
+# PowerShell 5.1 convierte el stderr de un .exe en un ErrorRecord, y con
+# $ErrorActionPreference = "Stop" eso ABORTA el script aunque el programa
+# haya terminado bien. psql avisa por stderr en cada NOTICE, initdb avisa del
+# metodo de autenticacion... y la instalacion moria a media obra.
+#
+# Este ayudante los corre con la preferencia relajada y juzga por el codigo
+# de salida, que es lo unico que de verdad dice si funciono.
+#
+# OJO: el parametro NO se puede llamar $Args. Es una variable automatica de
+# PowerShell y el enlace se rompe en silencio: el .exe corre SIN argumentos.
+function Nativo {
+  param([string]$Exe, [string[]]$Argumentos, [switch]$Silencioso)
+  $previo = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $salida = & $Exe @Argumentos 2>&1
+    $codigo = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previo
+  }
+  if (-not $Silencioso) {
+    foreach ($l in $salida) {
+      $t = "$l".Trim()
+      if ($t) { Write-Output ("      " + $t) }
+    }
+  }
+  return [pscustomobject]@{ codigo = $codigo; salida = ($salida -join "`n") }
+}

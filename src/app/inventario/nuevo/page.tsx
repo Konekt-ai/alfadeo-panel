@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { enTransaccion } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
@@ -18,15 +18,21 @@ async function crearProducto(form: FormData) {
   const existencia = Number(form.get('existencia') || 0)
   const ubicacion = form.get('ubicacion') as string
 
-  const { data: prod } = await supabase.from('productos').insert({
-    nombre, laboratorio, lote, caducidad, activo: true,
-  }).select('id').single()
-
-  if (prod) {
-    await supabase.from('inventario').insert({
-      producto_id: prod.id, existencia, ubicacion,
-    })
-  }
+  // Producto y su existencia en una sola transacción: un producto sin
+  // renglón de inventario no aparece en ninguna pantalla y quedaba huérfano.
+  await enTransaccion(async ejecutar => {
+    const [prod] = await ejecutar<{ id: string }>(
+      `insert into productos (nombre, laboratorio, lote, caducidad, activo)
+       values ($1, $2, $3, $4::date, true)
+       returning id`,
+      [nombre, laboratorio, lote, caducidad]
+    )
+    await ejecutar(
+      `insert into inventario (producto_id, existencia, ubicacion, lote, caducidad)
+       values ($1::uuid, $2, $3, $4, $5::date)`,
+      [prod.id, existencia, ubicacion, lote, caducidad]
+    )
+  })
 
   revalidatePath('/inventario')
   redirect('/inventario')

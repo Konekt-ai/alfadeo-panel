@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { uno } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { renderToBuffer, Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer'
 import path from 'path'
@@ -74,17 +74,73 @@ const styles = StyleSheet.create({
 const fmt = (n: number) =>
   '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Lo que devuelve la consulta del PDF. Las partidas y la solicitud vienen
+// anidadas como json para conservar la misma forma que tenía el embebido.
+interface CotizacionPDF {
+  id: string
+  folio: string
+  estado: string
+  vigencia_dias: number
+  condiciones: string | null
+  notas: string | null
+  subtotal: number
+  iva: number
+  total: number
+  created_at: string
+  cotizacion_items: Array<{
+    descripcion: string
+    cantidad: number
+    unidad: string | null
+    precio_unitario: number
+    subtotal: number
+    iva_exento: boolean
+    sujeto_confirmacion: boolean
+    posicion: number
+  }>
+  solicitudes: {
+    folio: number
+    clientes: {
+      nombre: string | null
+      empresa: string | null
+      tipo: string | null
+      ciudad: string | null
+      correo: string | null
+      telefono_wa: string | null
+    } | null
+  } | null
+}
+
 export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const { data: cot } = await supabase
-    .from('cotizaciones')
-    .select(`
-      id, folio, estado, vigencia_dias, condiciones, notas,
-      subtotal, iva, total, created_at,
-      cotizacion_items ( descripcion, cantidad, unidad, precio_unitario, subtotal, iva_exento, sujeto_confirmacion, posicion ),
-      solicitudes ( folio, clientes ( nombre, empresa, tipo, ciudad, correo, telefono_wa ) )
-    `)
-    .eq('id', params.id)
-    .single()
+  // Los dos embebidos que tenía PostgREST: las partidas como colección y la
+  // solicitud con su cliente anidado. El json_build_object anidado conserva
+  // exactamente la forma que espera el JSX de abajo.
+  const { data: cot } = await uno<CotizacionPDF>(
+    `select c.id, c.folio, c.estado, c.vigencia_dias, c.condiciones, c.notas,
+            c.subtotal, c.iva, c.total, c.created_at,
+            coalesce((
+              select json_agg(json_build_object(
+                       'descripcion', ci.descripcion, 'cantidad', ci.cantidad,
+                       'unidad', ci.unidad, 'precio_unitario', ci.precio_unitario,
+                       'subtotal', ci.subtotal, 'iva_exento', ci.iva_exento,
+                       'sujeto_confirmacion', ci.sujeto_confirmacion,
+                       'posicion', ci.posicion) order by ci.posicion)
+                from cotizacion_items ci where ci.cotizacion_id = c.id
+            ), '[]'::json) as cotizacion_items,
+            case when s.id is null then null else
+              json_build_object(
+                'folio', s.folio,
+                'clientes', case when cl.id is null then null else
+                  json_build_object('nombre', cl.nombre, 'empresa', cl.empresa,
+                                    'tipo', cl.tipo, 'ciudad', cl.ciudad,
+                                    'correo', cl.correo, 'telefono_wa', cl.telefono_wa)
+                end)
+            end as solicitudes
+       from cotizaciones c
+       left join solicitudes s on s.id = c.solicitud_id
+       left join clientes   cl on cl.id = s.cliente_id
+      where c.id = $1::uuid`,
+    [params.id]
+  )
 
   if (!cot) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

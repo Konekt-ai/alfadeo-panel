@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { sql } from '@/lib/db'
 import type { Cliente } from '@/lib/types'
 import { tipoClienteLabel, formatDate } from '@/lib/utils'
 import { PhoneIcon, EnvelopeIcon } from '@heroicons/react/20/solid'
@@ -7,16 +7,15 @@ import { PhoneIcon, EnvelopeIcon } from '@heroicons/react/20/solid'
 export const dynamic = 'force-dynamic'
 
 export default async function ClientesPage() {
-  const { data: clientes, error } = await supabase
-    .from('clientes')
-    .select('*')
-    .order('created_at', { ascending: false })
+  const { data: clientes, error } = await sql<Cliente>(
+    `select * from clientes order by created_at desc`
+  )
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Clientes</h1>
-        <p className="text-base text-gray-500 mt-1">{clientes?.length ?? 0} registrados</p>
+        <p className="text-base text-gray-500 mt-1">{clientes.length} registrados</p>
       </div>
 
       {error && (

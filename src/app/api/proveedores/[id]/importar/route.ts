@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/supabase'
+import { uno, qx } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +67,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!file) return NextResponse.json({ error: 'No se recibió ningún archivo.' }, { status: 400 })
 
   // Confirmar que el proveedor existe.
-  const { data: prov } = await supabase.from('proveedores').select('id').eq('id', proveedor_id).single()
+  const { data: prov } = await uno<{ id: string }>(
+    `select id from proveedores where id = $1::uuid`, [proveedor_id]
+  )
   if (!prov) return NextResponse.json({ error: 'Proveedor no encontrado.' }, { status: 404 })
 
   let rows: Record<string, any>[]
@@ -133,12 +135,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let insertados = 0
   for (let i = 0; i < registros.length; i += 500) {
     const lote = registros.slice(i, i + 500)
-    const { error } = await supabase
-      .from('proveedor_precios')
-      .upsert(lote, { onConflict: 'proveedor_id,sku_proveedor' })
-    if (error) {
+    // Las columnas salen del primer registro; todos traen la misma forma.
+    const cols = Object.keys(lote[0])
+    const marcadores = lote.map((_, j) =>
+      `(${cols.map((__, k) => `$${j * cols.length + k + 1}`).join(', ')})`
+    ).join(', ')
+    const valores = lote.flatMap(r => cols.map(c => (r as Record<string, unknown>)[c]))
+    const actualiza = cols
+      .filter(c => c !== 'proveedor_id' && c !== 'sku_proveedor')
+      .map(c => `${c} = excluded.${c}`)
+      .join(', ')
+
+    try {
+      await qx(
+        `insert into proveedor_precios (${cols.map(c => `"${c}"`).join(', ')})
+         values ${marcadores}
+         on conflict (proveedor_id, sku_proveedor) do update set ${actualiza}`,
+        valores
+      )
+    } catch (e) {
       return NextResponse.json(
-        { error: `Error al guardar (fila ~${i}): ${error.message}`, insertados },
+        { error: `Error al guardar (fila ~${i}): ${(e as Error).message}`, insertados },
         { status: 500 }
       )
     }

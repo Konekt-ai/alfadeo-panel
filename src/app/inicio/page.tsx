@@ -1,12 +1,12 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import { pesos } from '@/lib/utils'
 import { textoEntrega } from '@/lib/entrega'
 import { usuarioActual } from '@/lib/usuario'
 import type { Alerta } from '@/lib/types'
 import {
   CalculatorIcon, ArrowsRightLeftIcon, TruckIcon, InboxArrowDownIcon,
-  BanknotesIcon, ArchiveBoxIcon,
+  BanknotesIcon, ArchiveBoxIcon, QrCodeIcon,
 } from '@heroicons/react/24/outline'
 import {
   ExclamationTriangleIcon, ClockIcon, BeakerIcon, ArrowTrendingDownIcon,
@@ -37,6 +37,7 @@ const ACCESOS = [
   { href: '/traslados',    label: 'Traslados',      desc: 'Mandar producto a otra plaza',  icon: TruckIcon },
   { href: '/cobranza',     label: 'Cobranza',       desc: 'Adeudos y pagos',               icon: BanknotesIcon },
   { href: '/inventario',   label: 'Inventario',     desc: 'Catálogo y existencias',        icon: ArchiveBoxIcon },
+  { href: '/verificador',  label: 'Verificador',    desc: 'Escanear y registrar códigos',  icon: QrCodeIcon },
 ]
 
 export default async function InicioPage() {
@@ -44,16 +45,21 @@ export default async function InicioPage() {
   const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString()
 
   const [alertasRes, cobranzaRes, ventasHoyRes] = await Promise.all([
-    supabase.from('v_alertas').select('*'),
-    supabase.from('v_ventas_cobranza').select('saldo, estado_cobranza, total, estado'),
-    supabase.from('ventas').select('total').eq('estado', 'cerrada').gte('fecha', inicioDia),
+    sql<Alerta>(`select * from v_alertas`),
+    sql<{ saldo: number; estado_cobranza: string; total: number; estado: string }>(
+      `select saldo, estado_cobranza, total, estado from v_ventas_cobranza`
+    ),
+    sql<{ total: number }>(
+      `select total from ventas where estado = 'cerrada' and fecha >= $1`,
+      [inicioDia]
+    ),
   ])
 
   const error = alertasRes.error ?? cobranzaRes.error ?? ventasHoyRes.error
 
-  const alertas = (alertasRes.data ?? []) as Alerta[]
-  const cobranza = cobranzaRes.data ?? []
-  const ventasHoy = ventasHoyRes.data ?? []
+  const alertas = alertasRes.data
+  const cobranza = cobranzaRes.data
+  const ventasHoy = ventasHoyRes.data
 
   const porCobrar = cobranza
     .filter(v => v.estado === 'cerrada' && Number(v.saldo) > 0)
@@ -88,9 +94,10 @@ export default async function InicioPage() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

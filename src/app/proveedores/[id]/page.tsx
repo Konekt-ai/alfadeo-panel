@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, uno, qx } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
@@ -25,17 +25,25 @@ const matchBadge: Record<EstadoMatch, { l: string; c: string }> = {
 async function guardarProveedor(form: FormData) {
   'use server'
   const id = form.get('id') as string
-  await supabase
-    .from('proveedores')
-    .update({
-      nombre: (form.get('nombre') as string) || null,
-      metodo_ingesta: form.get('metodo_ingesta') as string,
-      portal_url: (form.get('portal_url') as string) || null,
-      dias_entrega: form.get('dias_entrega') ? Number(form.get('dias_entrega')) : null,
-      activo: form.get('activo') === 'on',
-      notas: (form.get('notas') as string) || null,
-    })
-    .eq('id', id)
+  await qx(
+    `update proveedores
+        set nombre         = $1,
+            metodo_ingesta = $2::metodo_ingesta,
+            portal_url     = $3,
+            dias_entrega   = $4,
+            activo         = $5,
+            notas          = $6
+      where id = $7::uuid`,
+    [
+      (form.get('nombre') as string) || null,
+      form.get('metodo_ingesta') as string,
+      (form.get('portal_url') as string) || null,
+      form.get('dias_entrega') ? Number(form.get('dias_entrega')) : null,
+      form.get('activo') === 'on',
+      (form.get('notas') as string) || null,
+      id,
+    ]
+  )
   revalidatePath(`/proveedores/${id}`)
   revalidatePath('/proveedores')
 }
@@ -58,21 +66,29 @@ export default async function ProveedorPage({
   const { id } = await params
   const { q } = await searchParams
 
-  const { data: prov } = await supabase.from('proveedores').select('*').eq('id', id).single()
-  if (!prov) return notFound()
-  const p = prov as Proveedor
+  const { data: p } = await uno<Proveedor>(
+    `select * from proveedores where id = $1::uuid`, [id]
+  )
+  if (!p) return notFound()
 
-  let query = supabase
-    .from('proveedor_precios')
-    .select('id, sku_proveedor, codigo_barras, nombre_prov, laboratorio, presentacion, precio, existencia, en_stock, caducidad, match_estado, fecha_precio')
-    .eq('proveedor_id', id)
-    .order('nombre_prov')
-    .limit(200)
+  // El % y el _ son comodines de LIKE: se escapan para buscarlos literales.
+  const par: unknown[] = [id]
+  let filtro = ''
+  if (q) {
+    par.push('%' + q.replace(/([%_\\])/g, '\\$1') + '%')
+    filtro = `and (nombre_prov ilike $2 or sku_proveedor ilike $2 or laboratorio ilike $2)`
+  }
 
-  if (q) query = query.or(`nombre_prov.ilike.%${q}%,sku_proveedor.ilike.%${q}%,laboratorio.ilike.%${q}%`)
-
-  const { data: precios } = await query
-  const rows = (precios as ProveedorPrecio[]) ?? []
+  const { data: rows } = await sql<ProveedorPrecio>(
+    `select id, sku_proveedor, codigo_barras, nombre_prov, laboratorio, presentacion,
+            precio, existencia, en_stock, caducidad, match_estado, fecha_precio
+       from proveedor_precios
+      where proveedor_id = $1::uuid
+      ${filtro}
+      order by nombre_prov
+      limit 200`,
+    par
+  )
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">

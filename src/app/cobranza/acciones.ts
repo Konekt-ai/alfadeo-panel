@@ -9,7 +9,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { uno, qx } from '@/lib/db'
 import { usuarioActual } from '@/lib/usuario'
 import { pesos } from '@/lib/utils'
 import type { MetodoPago, VentaCobranza } from '@/lib/types'
@@ -64,18 +64,17 @@ export async function registrarPago(entrada: EntradaPago): Promise<Resultado> {
   // El saldo se relee de la vista: es la fuente de verdad. Lo que traía la
   // pantalla pudo quedar viejo si alguien más aplicó otro pago mientras
   // tanto, y en cobranza eso pasa seguido.
-  const { data, error: errVenta } = await supabase
-    .from('v_ventas_cobranza')
-    .select('venta_id, folio, cliente_id, estado, total, pagado, saldo')
-    .eq('venta_id', entrada.venta_id)
-    .maybeSingle()
-
-  if (errVenta) return { ok: false, error: errVenta.message }
-
-  const venta = data as Pick<
+  const { data: venta, error: errVenta } = await uno<Pick<
     VentaCobranza,
     'venta_id' | 'folio' | 'cliente_id' | 'estado' | 'total' | 'pagado' | 'saldo'
-  > | null
+  >>(
+    `select venta_id, folio, cliente_id, estado, total, pagado, saldo
+       from v_ventas_cobranza
+      where venta_id = $1::uuid`,
+    [entrada.venta_id]
+  )
+
+  if (errVenta) return { ok: false, error: errVenta.message }
 
   if (!venta) return { ok: false, error: 'La venta ya no existe.' }
   if (venta.estado === 'cancelada') {
@@ -96,21 +95,28 @@ export async function registrarPago(entrada: EntradaPago): Promise<Resultado> {
     }
   }
 
-  const { error } = await supabase.from('pagos').insert({
-    venta_id: venta.venta_id,
-    // El trigger `pagos_cliente` también lo deduce, pero mandarlo explícito
-    // deja el renglón completo aunque el trigger se caiga en una migración.
-    cliente_id: venta.cliente_id,
-    monto,
-    fecha: entrada.fecha,
-    metodo: entrada.metodo,
-    referencia: entrada.referencia?.trim() || null,
-    notas: entrada.notas?.trim() || null,
-    origen: 'manual',            // capturado a mano = fuente de verdad (minuta 32)
-    usuario: usuarioActual(),
-  })
-
-  if (error) return { ok: false, error: error.message }
+  try {
+    await qx(
+      // El trigger `pagos_cliente` también deduce el cliente, pero mandarlo
+      // explícito deja el renglón completo aunque el trigger se caiga.
+      // origen 'manual' = capturado a mano, la fuente de verdad (minuta 32).
+      `insert into pagos (venta_id, cliente_id, monto, fecha, metodo,
+                          referencia, notas, origen, usuario)
+       values ($1::uuid, $2::uuid, $3, $4::date, $5, $6, $7, 'manual', $8)`,
+      [
+        venta.venta_id,
+        venta.cliente_id,
+        monto,
+        entrada.fecha,
+        entrada.metodo,
+        entrada.referencia?.trim() || null,
+        entrada.notas?.trim() || null,
+        usuarioActual(),
+      ]
+    )
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 
   revalidatePath('/cobranza')
   if (venta.cliente_id) revalidatePath(`/cobranza/${venta.cliente_id}`)
@@ -162,17 +168,21 @@ export async function actualizarCredito(form: FormData): Promise<void> {
     redirect(volverCon('err', 'El sistema de facturación externa no es válido.'))
   }
 
-  const { error } = await supabase
-    .from('clientes')
-    .update({
-      dias_credito: Math.round(dias),
-      limite_credito: limite,
-      portal_pagos_url: portal || null,
-      factura_externa: facturaExterna || null,
-    })
-    .eq('id', clienteId)
-
-  if (error) redirect(volverCon('err', error.message))
+  try {
+    await qx(
+      `update clientes
+          set dias_credito     = $1,
+              limite_credito   = $2,
+              portal_pagos_url = $3,
+              factura_externa  = $4
+        where id = $5::uuid`,
+      [Math.round(dias), limite, portal || null, facturaExterna || null, clienteId]
+    )
+  } catch (e) {
+    // redirect() lanza por diseño. Aquí no estorba: se lanza desde el catch
+    // y no hay try que lo envuelva, así que Next lo recibe y navega.
+    redirect(volverCon('err', (e as Error).message))
+  }
 
   revalidatePath('/cobranza')
   revalidatePath(`/cobranza/${clienteId}`)

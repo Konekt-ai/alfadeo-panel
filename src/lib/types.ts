@@ -11,6 +11,12 @@ export interface Cliente {
   ciudad: string | null
   telefono_wa: string | null
   correo: string | null
+  // Los llena el formulario del sitio web; el bot normalmente sólo tiene
+  // el WhatsApp, así que vienen vacíos en las solicitudes de ese canal.
+  telefono: string | null
+  direccion: string | null
+  puesto: string | null
+  especificacion: string | null
   // Datos fiscales: se guardan una vez y se reutilizan en pedidos siguientes.
   rfc: string | null
   razon_social: string | null
@@ -30,6 +36,9 @@ export interface SolicitudItem {
   cantidad: number | null
   unidad: string | null
   nota: string | null
+  categoria: string | null
+  marca: string | null
+  presentacion: string | null
 }
 
 export interface Producto {
@@ -211,6 +220,14 @@ export interface Solicitud {
   ciudad_entrega: string | null
   responsable: string | null
   requiere_humano: boolean
+  // Detalle comercial que captura el formulario del sitio. `nivel_urgencia`
+  // guarda la etiqueta original (Baja/Media/Alta/Crítica), que `urgencia`
+  // colapsa a los tres valores del enum.
+  nivel_urgencia: string | null
+  tiempo_entrega: string | null
+  vigencia_cotizacion: string | null
+  direccion_entrega: string | null
+  acepta_seguimiento: boolean
   // La pregunta va al final del flujo del bot, que es cuando el cliente
   // realmente la pide. null = no se llegó a preguntar.
   requiere_factura: boolean | null

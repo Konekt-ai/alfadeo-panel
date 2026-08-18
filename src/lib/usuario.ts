@@ -16,7 +16,7 @@
 // `usuarios_panel.auth_uid` amarra el historial ya existente.
 
 import { cookies } from 'next/headers'
-import { supabase } from './supabase'
+import { sql } from './db'
 import type { UsuarioPanel } from './types'
 
 export const COOKIE_USUARIO = 'alfadeo_usuario'
@@ -44,12 +44,13 @@ export function fijarSucursal(sucursalId: string) {
 }
 
 export async function listarUsuarios(): Promise<UsuarioPanel[]> {
-  const { data } = await supabase
-    .from('usuarios_panel')
-    .select('id, nombre, iniciales, rol, sucursal_id, activo')
-    .eq('activo', true)
-    .order('nombre')
-  return (data ?? []) as UsuarioPanel[]
+  const { data } = await sql<UsuarioPanel>(
+    `select id, nombre, iniciales, rol, sucursal_id, activo
+       from usuarios_panel
+      where activo
+      order by nombre`
+  )
+  return data
 }
 
 /**
@@ -58,13 +59,12 @@ export async function listarUsuarios(): Promise<UsuarioPanel[]> {
  * venta sin plaza no se puede registrar.
  */
 export async function resolverSucursal(): Promise<{ id: string; clave: string; nombre: string } | null> {
-  const { data } = await supabase
-    .from('sucursales')
-    .select('id, clave, nombre, es_matriz')
-    .eq('activo', true)
-    .order('es_matriz', { ascending: false })
-
-  const sucursales = data ?? []
+  const { data: sucursales } = await sql<{ id: string; clave: string; nombre: string }>(
+    `select id, clave, nombre
+       from sucursales
+      where activo
+      order by es_matriz desc, clave`
+  )
   if (!sucursales.length) return null
 
   const elegida = sucursales.find(s => s.id === sucursalActual()) ?? sucursales[0]

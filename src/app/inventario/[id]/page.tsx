@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, uno, qx, enTransaccion } from '@/lib/db'
 import { redirect, notFound } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
@@ -6,6 +6,20 @@ import { ArrowLeftIcon } from '@heroicons/react/20/solid'
 import { UBICACIONES } from '@/lib/constantes'
 
 export const dynamic = 'force-dynamic'
+
+// La fila que pinta el formulario: el renglón de inventario con su producto.
+interface FilaEdicion {
+  id: string
+  existencia: number | null
+  ubicacion: string | null
+  productos: {
+    id: string
+    nombre: string | null
+    laboratorio: string | null
+    lote: string | null
+    caducidad: string | null
+  } | null
+}
 
 const MESES = [
   { v: '01', l: 'Enero' }, { v: '02', l: 'Febrero' }, { v: '03', l: 'Marzo' },
@@ -29,8 +43,20 @@ async function actualizarProducto(form: FormData) {
   const existencia = Number(form.get('existencia'))
   const ubicacion = form.get('ubicacion') as string
 
-  await supabase.from('productos').update({ nombre, laboratorio, lote, caducidad }).eq('id', producto_id)
-  await supabase.from('inventario').update({ existencia, ubicacion }).eq('id', inventario_id)
+  await enTransaccion(async ejecutar => {
+    await ejecutar(
+      `update productos set nombre = $1, laboratorio = $2, lote = $3, caducidad = $4::date
+        where id = $5::uuid`,
+      [nombre, laboratorio, lote, caducidad, producto_id]
+    )
+    // El lote y la caducidad viven en la fila de inventario (una fila ES un
+    // lote); se mantienen a la par de las del catálogo.
+    await ejecutar(
+      `update inventario set existencia = $1, ubicacion = $2, lote = $3, caducidad = $4::date
+        where id = $5::uuid`,
+      [existencia, ubicacion, lote, caducidad, inventario_id]
+    )
+  })
 
   revalidatePath('/inventario')
   redirect('/inventario')
@@ -40,8 +66,11 @@ async function eliminarProducto(form: FormData) {
   'use server'
   const inventario_id = form.get('inventario_id') as string
   const producto_id = form.get('producto_id') as string
-  await supabase.from('inventario').delete().eq('id', inventario_id)
-  await supabase.from('productos').delete().eq('id', producto_id)
+  // El orden importa: inventario apunta a productos por llave foránea.
+  await enTransaccion(async ejecutar => {
+    await ejecutar(`delete from inventario where id = $1::uuid`, [inventario_id])
+    await ejecutar(`delete from productos  where id = $1::uuid`, [producto_id])
+  })
   revalidatePath('/inventario')
   redirect('/inventario')
 }
@@ -49,15 +78,23 @@ async function eliminarProducto(form: FormData) {
 export default async function EditarProductoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  const { data, error } = await supabase
-    .from('inventario')
-    .select('id, existencia, ubicacion, productos(id, nombre, laboratorio, lote, caducidad)')
-    .eq('id', id)
-    .single()
+  const { data, error } = await uno<FilaEdicion>(
+    `select i.id, i.existencia, i.ubicacion,
+            case when p.id is null then null else
+              json_build_object('id', p.id, 'nombre', p.nombre,
+                                'laboratorio', p.laboratorio,
+                                'lote', coalesce(i.lote, p.lote),
+                                'caducidad', coalesce(i.caducidad, p.caducidad))
+            end as productos
+       from inventario i
+       left join productos p on p.id = i.producto_id
+      where i.id = $1::uuid`,
+    [id]
+  )
 
   if (error || !data) return notFound()
 
-  const prod = data.productos as any
+  const prod = data.productos
   const cadMes = prod?.caducidad ? prod.caducidad.slice(5, 7) : ''
   const cadAnio = prod?.caducidad ? prod.caducidad.slice(0, 4) : ''
 
@@ -105,7 +142,7 @@ export default async function EditarProductoPage({ params }: { params: Promise<{
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Existencia (piezas) *</label>
-            <input type="number" name="existencia" min="0" required defaultValue={data.existencia} className={inputCls} />
+            <input type="number" name="existencia" min="0" required defaultValue={data.existencia ?? 0} className={inputCls} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Ubicación *</label>

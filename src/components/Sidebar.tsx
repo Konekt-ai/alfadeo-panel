@@ -9,6 +9,7 @@ import {
   CalculatorIcon,
   ArrowsRightLeftIcon,
   BanknotesIcon,
+  QrCodeIcon,
   ReceiptPercentIcon,
   InboxArrowDownIcon,
   HomeIcon,
@@ -29,6 +30,7 @@ const grupos = [
     titulo: 'Almacén',
     items: [
       { href: '/inventario', label: 'Inventario', icon: ArchiveBoxIcon },
+      { href: '/verificador', label: 'Verificador', icon: QrCodeIcon },
       { href: '/movimientos', label: 'Movimientos', icon: ArrowsRightLeftIcon },
       { href: '/traslados', label: 'Traslados', icon: TruckIcon },
       { href: '/compras', label: 'Compras', icon: InboxArrowDownIcon },
@@ -56,7 +58,7 @@ const grupos = [
 const navMovil = [
   { href: '/pos', label: 'Vender', icon: CalculatorIcon },
   { href: '/inventario', label: 'Inventario', icon: ArchiveBoxIcon },
-  { href: '/movimientos', label: 'Movs.', icon: ArrowsRightLeftIcon },
+  { href: '/verificador', label: 'Códigos', icon: QrCodeIcon },
   { href: '/ventas', label: 'Ventas', icon: ReceiptPercentIcon },
   { href: '/cobranza', label: 'Cobranza', icon: BanknotesIcon },
 ]

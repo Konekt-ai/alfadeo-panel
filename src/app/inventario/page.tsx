@@ -1,10 +1,32 @@
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import Link from 'next/link'
 import { PlusIcon, MagnifyingGlassIcon, ArrowUpTrayIcon } from '@heroicons/react/20/solid'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { UBICACIONES, SUCURSALES } from '@/lib/constantes'
 
 export const dynamic = 'force-dynamic'
+
+// Una fila de `inventario` ES un lote: producto + plaza + lote + ubicación.
+// El producto y la plaza vienen anidados para que el JSX no cambie respecto
+// de cuando esto era un embebido de PostgREST.
+interface FilaInventario {
+  id: string
+  existencia: number | null
+  ubicacion: string | null
+  sucursales: { clave: string; nombre: string; ciudad: string | null } | null
+  productos: {
+    id: string
+    nombre: string | null
+    nombre_comercial: string | null
+    nombre_generico: string | null
+    concentracion: string | null
+    forma_farmaceutica: string | null
+    presentacion: string | null
+    laboratorio: string | null
+    lote: string | null
+    caducidad: string | null
+  } | null
+}
 
 export default async function InventarioPage({
   searchParams,
@@ -15,17 +37,33 @@ export default async function InventarioPage({
   const hoy = new Date().toISOString().split('T')[0]
   const en30dias = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
 
-  const { data, error } = await supabase
-    .from('inventario')
-    .select(`
-      id, existencia, ubicacion,
-      sucursales ( clave, nombre, ciudad ),
-      productos ( id, nombre, nombre_comercial, nombre_generico, concentracion,
-                  forma_farmaceutica, presentacion, laboratorio, lote, caducidad )
-    `)
-    .order('id', { ascending: false })
+  // El "case when ... is null" importa: sin él, una fila sin plaza traería
+  // un objeto lleno de nulos en vez de null, y el `?.` del JSX ya no
+  // protegería.
+  const { data, error } = await sql<FilaInventario>(
+    `select i.id, i.existencia, i.ubicacion,
+            case when s.id is null then null else
+              json_build_object('clave', s.clave, 'nombre', s.nombre, 'ciudad', s.ciudad)
+            end as sucursales,
+            case when p.id is null then null else
+              json_build_object(
+                'id', p.id, 'nombre', p?.nombre,
+                'nombre_comercial', p?.nombre_comercial,
+                'nombre_generico', p?.nombre_generico,
+                'concentracion', p?.concentracion,
+                'forma_farmaceutica', p?.forma_farmaceutica,
+                'presentacion', p?.presentacion,
+                'laboratorio', p?.laboratorio,
+                'lote', coalesce(i.lote, p?.lote),
+                'caducidad', coalesce(i.caducidad, p?.caducidad))
+            end as productos
+       from inventario i
+       left join sucursales s on s.id = i.sucursal_id
+       left join productos  p on p.id = i.producto_id
+      order by i.id desc`
+  )
 
-  let rows = (data ?? []).filter((r: any) => {
+  let rows = data.filter(r => {
     if (params.ubicacion && r.ubicacion !== params.ubicacion) return false
     if (params.sucursal && r.sucursales?.clave !== params.sucursal) return false
     if (params.vence === '30') {
@@ -40,15 +78,15 @@ export default async function InventarioPage({
       // Se busca por nombre, empezando por el comercial: es como lo busca el
       // equipo en la vida real, no por código de barras.
       const q = params.q.toLowerCase()
-      const p = r.productos ?? {}
-      return [p.nombre_comercial, p.nombre_generico, p.nombre, p.laboratorio, p.lote]
-        .some((campo: string | null) => campo?.toLowerCase().includes(q))
+      const p = r.productos
+      return [p?.nombre_comercial, p?.nombre_generico, p?.nombre, p?.laboratorio, p?.lote]
+        .some(campo => campo?.toLowerCase().includes(q))
     }
     return true
   })
 
   // Ordenar por nombre comercial, que es el que se ve primero en la tabla.
-  rows.sort((a: any, b: any) =>
+  rows.sort((a, b) =>
     (a.productos?.nombre_comercial ?? a.productos?.nombre ?? '')
       .localeCompare(b.productos?.nombre_comercial ?? b.productos?.nombre ?? '')
   )
@@ -149,9 +187,10 @@ export default async function InventarioPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-catalogo-sucursales.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>
@@ -178,9 +217,9 @@ export default async function InventarioPage({
             {rows.length === 0 && (
               <tr><td colSpan={10} className="text-center py-20 text-gray-400 text-base">Sin resultados.</td></tr>
             )}
-            {rows.map((r: any) => {
-              const p = r.productos ?? {}
-              const cad = p.caducidad
+            {rows.map(r => {
+              const p = r.productos
+              const cad = p?.caducidad
               const vencido = cad && cad < hoy
               const proxVencer = cad && cad >= hoy && cad <= en30dias
               const plaza = r.sucursales?.clave
@@ -189,19 +228,19 @@ export default async function InventarioPage({
                   {/* Comercial arriba, genérico abajo: así lo busca el equipo. */}
                   <td className="px-5 py-4">
                     <div className="font-semibold text-gray-900">
-                      {p.nombre_comercial ?? p.nombre_generico ?? p.nombre ?? '—'}
+                      {p?.nombre_comercial ?? p?.nombre_generico ?? p?.nombre ?? '—'}
                     </div>
-                    {p.nombre_generico && p.nombre_generico !== p.nombre_comercial && (
+                    {p?.nombre_generico && p?.nombre_generico !== p?.nombre_comercial && (
                       <div className="text-sm text-gray-500 mt-0.5">
-                        {p.nombre_generico}
-                        {p.forma_farmaceutica && ` · ${p.forma_farmaceutica}`}
+                        {p?.nombre_generico}
+                        {p?.forma_farmaceutica && ` · ${p?.forma_farmaceutica}`}
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{p.concentracion ?? '—'}</td>
-                  <td className="px-5 py-4 text-gray-700">{p.presentacion ?? '—'}</td>
-                  <td className="px-5 py-4 text-gray-500">{p.laboratorio ?? '—'}</td>
-                  <td className="px-5 py-4 font-mono text-sm text-gray-500">{p.lote ?? '—'}</td>
+                  <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{p?.concentracion ?? '—'}</td>
+                  <td className="px-5 py-4 text-gray-700">{p?.presentacion ?? '—'}</td>
+                  <td className="px-5 py-4 text-gray-500">{p?.laboratorio ?? '—'}</td>
+                  <td className="px-5 py-4 font-mono text-sm text-gray-500">{p?.lote ?? '—'}</td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex items-center gap-1.5 text-sm font-medium whitespace-nowrap ${
                       vencido ? 'text-red-600' : proxVencer ? 'text-amber-600' : 'text-gray-600'
@@ -212,7 +251,8 @@ export default async function InventarioPage({
                   </td>
                   <td className="px-5 py-4">
                     <span className={`text-lg font-semibold ${
-                      r.existencia === 0 ? 'text-red-500' : r.existencia < 10 ? 'text-amber-600' : 'text-gray-900'
+                      Number(r.existencia) === 0 ? 'text-red-500'
+                        : Number(r.existencia) < 10 ? 'text-amber-600' : 'text-gray-900'
                     }`}>
                       {r.existencia}
                     </span>

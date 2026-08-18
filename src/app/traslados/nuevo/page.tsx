@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import { resolverSucursal } from '@/lib/usuario'
 import { fechaEntregaEstimada, fechaISO, textoEntrega } from '@/lib/entrega'
 import TrasladoForm from './TrasladoForm'
@@ -15,16 +15,15 @@ interface PlazaFila {
 }
 
 export default async function NuevoTrasladoPage() {
-  const [{ data, error }, plazaActiva] = await Promise.all([
-    supabase
-      .from('sucursales')
-      .select('id, clave, nombre, ciudad, es_matriz')
-      .eq('activo', true)
-      .order('es_matriz', { ascending: false }),
+  const [{ data: filas, error }, plazaActiva] = await Promise.all([
+    sql<PlazaFila>(
+      `select id, clave, nombre, ciudad
+         from sucursales
+        where activo
+        order by es_matriz desc, clave`
+    ),
     resolverSucursal(),
   ])
-
-  const filas = (data ?? []) as unknown as PlazaFila[]
   const plazas = filas.map(p => ({
     id: p.id,
     clave: p.clave ?? '—',
@@ -62,9 +61,10 @@ export default async function NuevoTrasladoPage() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

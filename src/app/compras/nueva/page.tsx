@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { sql } from '@/lib/db'
 import { resolverSucursal } from '@/lib/usuario'
 import { ArrowLeftIcon } from '@heroicons/react/20/solid'
 import CompraForm from './CompraForm'
@@ -9,10 +9,13 @@ export const dynamic = 'force-dynamic'
 export default async function NuevaCompraPage() {
   const [sucursal, { data: sucursales }, { data: proveedores }] = await Promise.all([
     resolverSucursal(),
-    supabase.from('sucursales').select('id, clave, nombre')
-      .eq('activo', true).order('es_matriz', { ascending: false }),
-    supabase.from('proveedores').select('id, nombre')
-      .eq('activo', true).order('nombre'),
+    sql<{ id: string; clave: string; nombre: string }>(
+      `select id, clave, nombre from sucursales
+        where activo order by es_matriz desc, clave`
+    ),
+    sql<{ id: string; nombre: string }>(
+      `select id, nombre from proveedores where activo order by nombre`
+    ),
   ])
 
   if (!sucursal) {

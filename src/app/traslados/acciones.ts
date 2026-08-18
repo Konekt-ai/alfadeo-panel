@@ -15,7 +15,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { sql, qx, enTransaccion } from '@/lib/db'
 import { usuarioActual } from '@/lib/usuario'
 import type { ProductoPOS } from '@/lib/types'
 
@@ -60,14 +60,13 @@ export async function buscarProductosTraslado(
   const texto = (q ?? '').trim()
   if (!origenId || texto.length < 2) return { productos: [] }
 
-  const { data, error } = await supabase.rpc('buscar_productos_pos', {
-    q: texto,
-    p_sucursal: origenId,
-    limite: 12,
-  })
+  const { data, error } = await sql<ProductoPOS>(
+    `select * from buscar_productos_pos($1, $2::uuid, $3)`,
+    [texto, origenId, 12]
+  )
 
   if (error) return { productos: [], error: error.message }
-  return { productos: (data ?? []) as ProductoPOS[] }
+  return { productos: data }
 }
 
 /**
@@ -94,61 +93,68 @@ export async function crearTraslado(datos: DatosTraslado): Promise<ResultadoTras
     return { ok: false, error: 'Agrega al menos una partida con cantidad mayor a cero.' }
   }
 
-  // Folio consecutivo de la plaza que envía: cada empresa lleva su
-  // propia serie (minuta 9).
-  const { data: folio, error: errorFolio } = await supabase.rpc('siguiente_folio', {
-    p_ambito: 'traslado',
-    p_sucursal_id: datos.origen_id,
-  })
-  if (errorFolio) return { ok: false, error: errorFolio.message }
+  // Folio, encabezado y partidas en UNA transacción: si algo truena no
+  // queda un traslado vacío con folio consumido. Antes había que borrar el
+  // encabezado a mano cuando fallaban las partidas.
+  let trasladoId: string
+  let folioNuevo: string | null
+  try {
+    const r = await enTransaccion(async ejecutar => {
+      // Folio consecutivo de la plaza que envía: cada empresa lleva su
+      // propia serie (minuta 9).
+      const [{ folio }] = await ejecutar<{ folio: string | null }>(
+        `select siguiente_folio('traslado', $1::uuid) as folio`,
+        [datos.origen_id]
+      )
 
-  const { data: traslado, error: errorAlta } = await supabase
-    .from('traslados')
-    .insert({
-      folio: folio ?? null,
-      origen_id: datos.origen_id,
-      destino_id: datos.destino_id,
-      estado: 'borrador',
-      paqueteria: datos.paqueteria || null,
-      guia: datos.guia?.trim() || null,
-      fecha_estimada: datos.fecha_estimada || null,
-      usuario,
-      notas: datos.notas?.trim() || null,
+      const [cab] = await ejecutar<{ id: string; folio: string | null }>(
+        `insert into traslados (folio, origen_id, destino_id, estado,
+                                paqueteria, guia, fecha_estimada, usuario, notas)
+         values ($1, $2::uuid, $3::uuid, 'borrador', $4, $5, $6::date, $7, $8)
+         returning id, folio`,
+        [
+          folio,
+          datos.origen_id,
+          datos.destino_id,
+          datos.paqueteria || null,
+          datos.guia?.trim() || null,
+          datos.fecha_estimada || null,
+          usuario,
+          datos.notas?.trim() || null,
+        ]
+      )
+
+      // unnest en vez de un insert por partida: un solo viaje a la base.
+      await ejecutar(
+        `insert into traslado_items (traslado_id, producto_id, cantidad, posicion)
+         select $1::uuid, u.producto_id::uuid, u.cantidad, u.posicion
+           from unnest($2::text[], $3::numeric[], $4::int[])
+                as u(producto_id, cantidad, posicion)`,
+        [
+          cab.id,
+          partidas.map(p => p.producto_id),
+          partidas.map(p => Number(p.cantidad)),
+          partidas.map((_, i) => i),
+        ]
+      )
+
+      return cab
     })
-    .select('id, folio')
-    .single()
-
-  if (errorAlta || !traslado) {
-    return { ok: false, error: errorAlta?.message ?? 'No se pudo crear el traslado.' }
-  }
-
-  const trasladoId = String(traslado.id)
-
-  const { error: errorPartidas } = await supabase.from('traslado_items').insert(
-    partidas.map((p, i) => ({
-      traslado_id: trasladoId,
-      producto_id: p.producto_id,
-      cantidad: Number(p.cantidad),
-      posicion: i,
-    })),
-  )
-
-  if (errorPartidas) {
-    // Un traslado sin partidas no sirve para nada: se deshace el
-    // encabezado para no dejar documentos vacíos en la lista.
-    await supabase.from('traslados').delete().eq('id', trasladoId)
-    return { ok: false, error: errorPartidas.message }
+    trasladoId = r.id
+    folioNuevo = r.folio
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
   }
 
   let aviso: string | undefined
   if (datos.enviar_ahora) {
-    const { error: errorEnvio } = await supabase.rpc('enviar_traslado', {
-      p_traslado_id: trasladoId,
-      p_usuario: usuario,
-    })
-    // El documento ya existe: si el envío falla se queda en borrador y
-    // se puede reintentar desde el detalle.
-    if (errorEnvio) aviso = errorEnvio.message
+    try {
+      await qx(`select enviar_traslado($1::uuid, $2)`, [trasladoId, usuario])
+    } catch (e) {
+      // El documento ya existe: si el envío falla se queda en borrador y
+      // se puede reintentar desde el detalle.
+      aviso = (e as Error).message
+    }
   }
 
   revalidatePath('/traslados')
@@ -157,7 +163,7 @@ export async function crearTraslado(datos: DatosTraslado): Promise<ResultadoTras
   return {
     ok: true,
     id: trasladoId,
-    folio: (traslado.folio as string | null) ?? null,
+    folio: folioNuevo,
     aviso,
   }
 }
@@ -170,10 +176,12 @@ export async function enviarTrasladoAccion(form: FormData): Promise<void> {
   const id = String(form.get('traslado_id') ?? '')
   if (!id) redirect('/traslados')
 
-  const { error } = await supabase.rpc('enviar_traslado', {
-    p_traslado_id: id,
-    p_usuario: usuarioActual(),
-  })
+  let error: { message: string } | null = null
+  try {
+    await qx(`select enviar_traslado($1::uuid, $2)`, [id, usuarioActual()])
+  } catch (e) {
+    error = { message: (e as Error).message }
+  }
 
   revalidatePath('/traslados')
   revalidatePath(`/traslados/${id}`)
@@ -201,11 +209,12 @@ export async function recibirTrasladoAccion(form: FormData): Promise<void> {
     )
   }
 
-  const { error } = await supabase.rpc('recibir_traslado', {
-    p_traslado_id: id,
-    p_usuario: usuarioActual(),
-    p_ubicacion: ubicacion,
-  })
+  let error: { message: string } | null = null
+  try {
+    await qx(`select recibir_traslado($1::uuid, $2, $3)`, [id, usuarioActual(), ubicacion])
+  } catch (e) {
+    error = { message: (e as Error).message }
+  }
 
   revalidatePath('/traslados')
   revalidatePath(`/traslados/${id}`)
@@ -223,18 +232,18 @@ export async function cancelarTrasladoAccion(form: FormData): Promise<void> {
   const id = String(form.get('traslado_id') ?? '')
   if (!id) redirect('/traslados')
 
-  const { data, error } = await supabase
-    .from('traslados')
-    .update({ estado: 'cancelado' })
-    .eq('id', id)
-    .eq('estado', 'borrador')
-    .select('id')
-
-  const mensaje = error
-    ? error.message
-    : (data ?? []).length === 0
-      ? 'Sólo se puede cancelar un traslado en borrador.'
-      : null
+  let mensaje: string | null = null
+  try {
+    const filas = await qx<{ id: string }>(
+      `update traslados set estado = 'cancelado'
+        where id = $1::uuid and estado = 'borrador'
+        returning id`,
+      [id]
+    )
+    if (filas.length === 0) mensaje = 'Sólo se puede cancelar un traslado en borrador.'
+  } catch (e) {
+    mensaje = (e as Error).message
+  }
 
   revalidatePath('/traslados')
   revalidatePath(`/traslados/${id}`)

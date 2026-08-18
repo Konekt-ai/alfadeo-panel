@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { sql, uno, faltaMigracion } from '@/lib/db'
 import { pesos, formatDia, formatDate, cobranzaLabel, cobranzaColor, formaPagoLabel } from '@/lib/utils'
 import type { VentaCobranza, VentaItem, Pago, Lote } from '@/lib/types'
 import { ArrowLeftIcon, DocumentTextIcon } from '@heroicons/react/20/solid'
@@ -23,32 +23,33 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   const { id } = await params
 
   const [ventaRes, itemsRes, pagosRes] = await Promise.all([
-    supabase.from('v_ventas_cobranza').select('*').eq('venta_id', id).maybeSingle(),
-    supabase.from('venta_items').select('*').eq('venta_id', id).order('posicion'),
-    supabase.from('pagos').select('*').eq('venta_id', id).order('fecha', { ascending: false }),
+    uno<VentaCobranza>(`select * from v_ventas_cobranza where venta_id = $1::uuid`, [id]),
+    sql<VentaItem>(`select * from venta_items where venta_id = $1::uuid order by posicion`, [id]),
+    sql<Pago>(`select * from pagos where venta_id = $1::uuid order by fecha desc`, [id]),
   ])
 
   // Si la vista todavía no existe es que falta la migración; se distingue de
   // "la venta no existe" para no mandar un 404 engañoso.
-  const errorEsquema = ventaRes.error && /relation|column|function|schema cache|does not exist|no existe/i.test(ventaRes.error.message)
+  const errorEsquema = ventaRes.error && faltaMigracion(ventaRes.error.message)
   if (errorEsquema) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {ventaRes.error?.message}
           <p className="mt-2 text-sm">
-            Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+            Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
           </p>
         </div>
       </div>
     )
   }
 
-  const venta = ventaRes.data as VentaCobranza | null
+  const venta = ventaRes.data
   if (!venta) notFound()
 
-  const items = (itemsRes.data ?? []) as VentaItem[]
-  const pagos = (pagosRes.data ?? []) as Pago[]
+  const items = itemsRes.data
+  const pagos = pagosRes.data
 
   const detalle = 'bg-white border border-gray-200 rounded-xl'
   const dato = (label: string, valor: React.ReactNode) => (

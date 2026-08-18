@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { sql, uno } from '@/lib/db'
 import { pesos, formatDia } from '@/lib/utils'
 import type { VentaCobranza, VentaItem, Lote } from '@/lib/types'
 import Autoimprimir from './Autoimprimir'
@@ -13,9 +13,8 @@ export const dynamic = 'force-dynamic'
 // colores ni medias tintas, sólo negro sobre papel.
 //
 // Se imprime desde el navegador (Ctrl+P / diálogo automático). No se usa
-// ESC/POS ni driver directo: eso obligaría a un servicio corriendo en la PC, y
-// la decisión fue que el panel viva en la nube y esta máquina sea sólo
-// terminal.
+// ESC/POS ni driver directo: eso obligaría a otro servicio más corriendo en
+// la máquina, y con el navegador basta.
 
 const CSS = `
   @page { size: 58mm auto; margin: 0; }
@@ -61,22 +60,28 @@ export default async function TicketPage({
   const { auto } = await searchParams
 
   const [ventaRes, itemsRes] = await Promise.all([
-    supabase.from('v_ventas_cobranza').select('*').eq('venta_id', id).maybeSingle(),
-    supabase.from('venta_items').select('*').eq('venta_id', id).order('posicion'),
+    uno<VentaCobranza>(`select * from v_ventas_cobranza where venta_id = $1::uuid`, [id]),
+    sql<VentaItem>(`select * from venta_items where venta_id = $1::uuid order by posicion`, [id]),
   ])
 
-  const venta = ventaRes.data as VentaCobranza | null
+  const venta = ventaRes.data
   if (!venta) notFound()
 
-  const items = (itemsRes.data ?? []) as VentaItem[]
+  const items = itemsRes.data
 
   // Los datos fiscales de la plaza: son empresas distintas y el ticket tiene
   // que decir cuál vendió (minuta 9).
-  const { data: suc } = await supabase
-    .from('sucursales')
-    .select('nombre, razon_social, rfc, ciudad, telefono_wa')
-    .eq('id', venta.sucursal_id ?? '')
-    .maybeSingle()
+  const { data: suc } = await uno<{
+    nombre: string
+    razon_social: string | null
+    rfc: string | null
+    ciudad: string | null
+    telefono_wa: string | null
+  }>(
+    `select nombre, razon_social, rfc, ciudad, telefono_wa
+       from sucursales where id = $1::uuid`,
+    [venta.sucursal_id]
+  )
 
   const hayIva = items.some(i => Number(i.iva) > 0)
 

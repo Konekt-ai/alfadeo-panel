@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase'
+import { sql } from '@/lib/db'
 import Link from 'next/link'
 import { ChevronRightIcon } from '@heroicons/react/20/solid'
-import type { MetodoIngesta } from '@/lib/types'
+import type { MetodoIngesta, Proveedor } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,16 +13,21 @@ const metodoLabel: Record<MetodoIngesta, string> = {
 }
 
 export default async function ProveedoresPage() {
-  const { data: proveedores, error } = await supabase
-    .from('proveedores')
-    .select('*, proveedor_precios(count)')
-    .order('nombre')
+  // El conteo de precios era un embebido de PostgREST; aqui es una
+  // subconsulta, que ademas evita traer las filas solo para contarlas.
+  const { data: proveedores, error } = await sql<Proveedor & { num_precios: number }>(
+    `select p.*,
+            (select count(*) from proveedor_precios pp where pp.proveedor_id = p.id)::int
+              as num_precios
+       from proveedores p
+      order by p.nombre`
+  )
 
   return (
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Proveedores</h1>
-        <p className="text-base text-gray-500 mt-1">{proveedores?.length ?? 0} registrados</p>
+        <p className="text-base text-gray-500 mt-1">{proveedores.length} registrados</p>
       </div>
 
       {error && (
@@ -32,8 +37,8 @@ export default async function ProveedoresPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(proveedores ?? []).map((p: any) => {
-          const numPrecios = p.proveedor_precios?.[0]?.count ?? 0
+        {proveedores.map(p => {
+          const numPrecios = p.num_precios
           return (
             <Link
               key={p.id}

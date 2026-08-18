@@ -13,7 +13,7 @@
 // importación que pisara existencias borraría ese rastro sin dejar asiento.
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { sql, qx } from '@/lib/db'
 import type { ProductoPOS } from '@/lib/types'
 
 export interface FilaAspel {
@@ -58,12 +58,15 @@ export async function evaluarFilas(filas: FilaAspel[]): Promise<{ evaluadas: Fil
   const codigos = filas.map(f => f.codigo_barras).filter(esCodigoBarras) as string[]
   const porCodigo = new Map<string, { id: string; nombre: string }>()
   if (codigos.length) {
-    const { data, error } = await supabase
-      .from('productos')
-      .select('id, nombre, nombre_comercial, codigo_barras')
-      .in('codigo_barras', Array.from(new Set(codigos)))
+    const { data, error } = await sql<{
+      id: string; nombre: string; nombre_comercial: string | null; codigo_barras: string | null
+    }>(
+      `select id, nombre, nombre_comercial, codigo_barras
+         from productos where codigo_barras = any($1)`,
+      [Array.from(new Set(codigos))]
+    )
     if (error) return { evaluadas: [], error: error.message }
-    for (const p of data ?? []) {
+    for (const p of data) {
       if (p.codigo_barras) {
         porCodigo.set(p.codigo_barras, { id: p.id, nombre: p.nombre_comercial ?? p.nombre })
       }
@@ -74,11 +77,11 @@ export async function evaluarFilas(filas: FilaAspel[]): Promise<{ evaluadas: Fil
   const claves = filas.map(f => f.clave).filter(Boolean) as string[]
   const porClave = new Map<string, string>()
   if (claves.length) {
-    const { data } = await supabase
-      .from('producto_codigos')
-      .select('producto_id, codigo')
-      .in('codigo', Array.from(new Set(claves)))
-    for (const c of data ?? []) porClave.set(c.codigo, c.producto_id)
+    const { data } = await sql<{ producto_id: string; codigo: string }>(
+      `select producto_id, codigo from producto_codigos where codigo = any($1)`,
+      [Array.from(new Set(claves))]
+    )
+    for (const c of data) porClave.set(c.codigo, c.producto_id)
   }
 
   for (let i = 0; i < filas.length; i++) {
@@ -111,10 +114,10 @@ export async function evaluarFilas(filas: FilaAspel[]): Promise<{ evaluadas: Fil
     // Por nombre. Se pide el ranking del RPC, que ya pondera comercial sobre
     // genérico (minuta 20).
     if (f.descripcion) {
-      const { data } = await supabase.rpc('buscar_productos_pos', {
-        q: f.descripcion, p_sucursal: null, limite: 2,
-      })
-      const rs = (data ?? []) as ProductoPOS[]
+      const { data: rs } = await sql<ProductoPOS>(
+        `select * from buscar_productos_pos($1, null, 2)`,
+        [f.descripcion]
+      )
       const mejor = rs[0]
       const segundo = rs[1]
 
@@ -184,13 +187,20 @@ export async function aplicarImportacion(
       }
       if (!Object.keys(cambios).length) { resumen.omitidos++; continue }
 
-      const { error } = await supabase.from('productos').update(cambios).eq('id', f.producto_id!)
-      if (error) {
+      // Las columnas se arman a partir del objeto `cambios`, que ya sólo
+      // trae lo que el usuario pidió actualizar.
+      const cols = Object.keys(cambios)
+      const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ')
+      try {
+        await qx(
+          `update productos set ${sets} where id = $${cols.length + 1}::uuid`,
+          [...cols.map(c => cambios[c]), f.producto_id!]
+        )
+        resumen.actualizados++
+      } catch (e) {
         // El código de barras es único de facto: si ya lo tiene otro producto,
         // hay que decir cuál fila falló, no fallar en silencio.
-        resumen.errores.push(`Fila ${f.indice + 2}: ${error.message}`)
-      } else {
-        resumen.actualizados++
+        resumen.errores.push(`Fila ${f.indice + 2}: ${(e as Error).message}`)
       }
     }
   } else {
@@ -204,20 +214,23 @@ export async function aplicarImportacion(
       const tanda = nuevos.slice(i, i + 200)
       // El trigger `productos_derivar_nombre` desglosa comercial, genérico,
       // concentración y presentación a partir del nombre (minuta 17).
-      const { error, data } = await supabase.from('productos').insert(
-        tanda.map(f => ({
-          nombre: f.descripcion,
-          codigo_barras: esCodigoBarras(f.codigo_barras) ? f.codigo_barras : null,
-          laboratorio: f.laboratorio,
-          precio_base: f.precio,
-          activo: true,
-        }))
-      ).select('id')
-
-      if (error) {
-        resumen.errores.push(`Filas ${i + 2}–${i + tanda.length + 1}: ${error.message}`)
-      } else {
-        resumen.creados += data?.length ?? 0
+      try {
+        const data = await qx<{ id: string }>(
+          `insert into productos (nombre, codigo_barras, laboratorio, precio_base, activo)
+           select u.nombre, u.codigo_barras, u.laboratorio, u.precio_base, true
+             from unnest($1::text[], $2::text[], $3::text[], $4::numeric[])
+                  as u(nombre, codigo_barras, laboratorio, precio_base)
+           returning id`,
+          [
+            tanda.map(f => f.descripcion),
+            tanda.map(f => (esCodigoBarras(f.codigo_barras) ? f.codigo_barras : null)),
+            tanda.map(f => f.laboratorio),
+            tanda.map(f => f.precio),
+          ]
+        )
+        resumen.creados += data.length
+      } catch (e) {
+        resumen.errores.push(`Filas ${i + 2}–${i + tanda.length + 1}: ${(e as Error).message}`)
       }
     }
   } else {

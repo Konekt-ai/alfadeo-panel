@@ -1,5 +1,11 @@
 'use client'
 
+// Nota: este es un componente de CLIENTE, así que no puede usar
+// `faltaMigracion` de `@/lib/db` — ese módulo abre la conexión a Postgres y
+// es sólo de servidor. La detección se hace aquí sobre el texto del error
+// que ya devolvió la acción.
+const FALTA_BASE = /relation .* does not exist|function .* does not exist|falta correr las migraciones|no existe todavia/i
+
 // Alta de un traslado entre plazas (minuta 9, 37 y 5).
 //
 // El buscador consulta la existencia y los lotes DE LA PLAZA DE ORIGEN,
@@ -203,9 +209,10 @@ export default function TrasladoForm({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {error}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error) && (
+          {FALTA_BASE.test(error) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

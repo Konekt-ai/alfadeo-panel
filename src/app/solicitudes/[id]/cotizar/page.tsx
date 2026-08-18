@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, uno, enTransaccion } from '@/lib/db'
 import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
@@ -44,52 +44,75 @@ async function guardarCotizacion(form: FormData) {
   const total = subtotal + iva
 
   const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const { count } = await supabase
-    .from('cotizaciones')
-    .select('id', { count: 'exact', head: true })
-    .like('folio', `COT-${hoy}-%`)
-  const folio = `COT-${hoy}-${String((count ?? 0) + 1).padStart(4, '0')}`
 
-  const { data: cot, error } = await supabase
-    .from('cotizaciones')
-    .insert({
-      folio,
-      solicitud_id,
-      cliente_id: cliente_id || null,
-      vigencia_dias,
-      condiciones: condiciones || null,
-      notas: notas || null,
-      subtotal: Math.round(subtotal * 100) / 100,
-      iva: Math.round(iva * 100) / 100,
-      total: Math.round(total * 100) / 100,
+  // Folio, cabecera, partidas y el cambio de estado, todo en una
+  // transacción: antes, si fallaban las partidas quedaba una cotización
+  // vacía con folio consumido.
+  try {
+    await enTransaccion(async ejecutar => {
+      const [{ n }] = await ejecutar<{ n: number }>(
+        `select count(*)::int as n from cotizaciones where folio like $1`,
+        [`COT-${hoy}-%`]
+      )
+      const folio = `COT-${hoy}-${String(n + 1).padStart(4, '0')}`
+
+      const [cot] = await ejecutar<{ id: string }>(
+        `insert into cotizaciones (folio, solicitud_id, cliente_id, vigencia_dias,
+                                   condiciones, notas, subtotal, iva, total)
+         values ($1, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
+         returning id`,
+        [
+          folio, solicitud_id, cliente_id || null, vigencia_dias,
+          condiciones || null, notas || null,
+          Math.round(subtotal * 100) / 100,
+          Math.round(iva * 100) / 100,
+          Math.round(total * 100) / 100,
+        ]
+      )
+
+      // unnest en vez de un insert por partida: un solo viaje a la base.
+      await ejecutar(
+        `insert into cotizacion_items
+           (cotizacion_id, producto_id, descripcion, cantidad, unidad,
+            precio_unitario, iva_exento, sujeto_confirmacion, proveedor_id,
+            origen_compra, costo_unitario, margen_pct, posicion)
+         select $1::uuid, u.producto_id::uuid, u.descripcion, u.cantidad, u.unidad,
+                u.precio_unitario, u.iva_exento, u.sujeto_confirmacion,
+                u.proveedor_id::uuid, u.origen_compra, u.costo_unitario,
+                u.margen_pct, u.posicion
+           from unnest($2::text[], $3::text[], $4::numeric[], $5::text[],
+                       $6::numeric[], $7::boolean[], $8::boolean[], $9::text[],
+                       $10::text[], $11::numeric[], $12::numeric[], $13::int[])
+                as u(producto_id, descripcion, cantidad, unidad, precio_unitario,
+                     iva_exento, sujeto_confirmacion, proveedor_id, origen_compra,
+                     costo_unitario, margen_pct, posicion)`,
+        [
+          cot.id,
+          items.map(it => it.producto_id || null),
+          items.map(it => it.descripcion),
+          items.map(it => it.cantidad),
+          items.map(it => it.unidad || null),
+          items.map(it => it.precio_unitario),
+          items.map(it => it.iva_exento),
+          items.map(it => it.sujeto_confirmacion),
+          items.map(it => it.proveedor_id || null),
+          items.map(it => it.origen_compra || null),
+          items.map(it => it.costo_unitario),
+          items.map(it => it.margen_pct),
+          items.map((_, i) => i + 1),
+        ]
+      )
+
+      await ejecutar(
+        `update solicitudes set estado = 'cotizada' where id = $1::uuid`,
+        [solicitud_id]
+      )
     })
-    .select('id')
-    .single()
-
-  if (error || !cot) return
-
-  await supabase.from('cotizacion_items').insert(
-    items.map((it, i) => ({
-      cotizacion_id: cot.id,
-      producto_id: it.producto_id || null,
-      descripcion: it.descripcion,
-      cantidad: it.cantidad,
-      unidad: it.unidad || null,
-      precio_unitario: it.precio_unitario,
-      iva_exento: it.iva_exento,
-      sujeto_confirmacion: it.sujeto_confirmacion,
-      proveedor_id: it.proveedor_id || null,
-      origen_compra: it.origen_compra || null,
-      costo_unitario: it.costo_unitario,
-      margen_pct: it.margen_pct,
-      posicion: i + 1,
-    }))
-  )
-
-  await supabase
-    .from('solicitudes')
-    .update({ estado: 'cotizada' })
-    .eq('id', solicitud_id)
+  } catch {
+    // Se conserva el comportamiento anterior: si algo falla, no se navega
+    // y el formulario se queda como estaba.
+    return
+  }
 
   revalidatePath('/solicitudes')
   revalidatePath(`/solicitudes/${solicitud_id}`)
@@ -100,35 +123,54 @@ export default async function CotizadorPage({ params }: { params: Promise<{ id: 
   const { id } = await params
 
   const [{ data: sol }, { data: productos }, { data: opciones }, { data: margenes }] = await Promise.all([
-    supabase
-      .from('solicitudes')
-      .select('id, folio, cliente_id, clientes(nombre, empresa, tipo), solicitud_items(id, descripcion_libre, cantidad, unidad, nota)')
-      .eq('id', id)
-      .single(),
-    supabase
-      .from('productos')
-      .select('id, nombre, laboratorio, presentacion, unidad, categoria, precio_base, iva_exento, activo')
-      .eq('activo', true)
-      .order('nombre'),
-    supabase
-      .from('v_opciones_compra')
-      .select('producto_id, origen, proveedor_id, fuente_nombre, costo, existencia, en_stock, caducidad, moq, fecha_precio, match_score'),
-    supabase
-      .from('margenes')
-      .select('id, tipo_cliente, categoria, producto_id, margen_pct, prioridad, activo')
-      .eq('activo', true),
+    uno<{
+      id: string
+      folio: number
+      cliente_id: string | null
+      clientes: { nombre: string | null; empresa: string | null; tipo: TipoCliente | null } | null
+      solicitud_items: SolicitudItem[]
+    }>(
+      `select s.id, s.folio, s.cliente_id,
+              case when c.id is null then null else
+                json_build_object('nombre', c.nombre, 'empresa', c.empresa, 'tipo', c.tipo)
+              end as clientes,
+              coalesce((
+                select json_agg(json_build_object(
+                         'id', si.id, 'descripcion_libre', si.descripcion_libre,
+                         'cantidad', si.cantidad, 'unidad', si.unidad, 'nota', si.nota))
+                  from solicitud_items si where si.solicitud_id = s.id
+              ), '[]'::json) as solicitud_items
+         from solicitudes s
+         left join clientes c on c.id = s.cliente_id
+        where s.id = $1::uuid`,
+      [id]
+    ),
+    sql<Producto>(
+      `select id, nombre, laboratorio, presentacion, unidad, categoria,
+              precio_base, iva_exento, activo
+         from productos where activo order by nombre`
+    ),
+    sql<OpcionCompra>(
+      `select producto_id, origen, proveedor_id, fuente_nombre, costo, existencia,
+              en_stock, caducidad, moq, fecha_precio, match_score
+         from v_opciones_compra`
+    ),
+    sql<Margen>(
+      `select id, tipo_cliente, categoria, producto_id, margen_pct, prioridad, activo
+         from margenes where activo`
+    ),
   ])
 
   if (!sol) return notFound()
 
   // Agrupa opciones de compra por producto para el formulario.
   const opcionesPorProducto: Record<string, OpcionCompra[]> = {}
-  for (const o of (opciones as OpcionCompra[]) ?? []) {
+  for (const o of opciones) {
     if (!o.producto_id) continue
     ;(opcionesPorProducto[o.producto_id] ??= []).push(o)
   }
 
-  const tipoCliente = ((sol.clientes as any)?.tipo as TipoCliente) ?? null
+  const tipoCliente = sol.clientes?.tipo ?? null
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">
@@ -137,7 +179,7 @@ export default async function CotizadorPage({ params }: { params: Promise<{ id: 
       </Link>
       <h1 className="text-xl font-semibold text-gray-900 mb-2">Nueva cotización</h1>
       <p className="text-sm text-gray-400 mb-8">
-        {(sol.clientes as any)?.nombre} · {(sol.clientes as any)?.empresa}
+        {sol.clientes?.nombre} · {sol.clientes?.empresa}
       </p>
       <CotizadorForm
         solicitudId={id}

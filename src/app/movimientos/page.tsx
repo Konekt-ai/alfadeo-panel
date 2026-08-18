@@ -2,7 +2,7 @@
 // Cada renglón dice qué se movió, de qué lote, cuánto había antes y después,
 // por qué, en qué plaza y quién lo hizo (minuta 8, 23).
 
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { SUCURSALES } from '@/lib/constantes'
 import { formatDate, formatDia, movimientoColor, movimientoLabel } from '@/lib/utils'
@@ -84,38 +84,47 @@ export default async function MovimientosPage({
   ])
   const firma = usuarioActual()
 
-  const { data: dataSucursales } = await supabase
-    .from('sucursales')
-    .select('id, clave, nombre, es_matriz')
-    .eq('activo', true)
-    .order('es_matriz', { ascending: false })
-
-  // El cliente de Supabase no tiene tipos generados: se le pone forma aquí.
-  const filasSucursal = (dataSucursales ?? []) as Array<{ id: string; clave: string; nombre: string }>
-  const sucursales = filasSucursal.map(s => ({ id: s.id, clave: s.clave, nombre: s.nombre }))
+  const { data: sucursales } = await sql<{ id: string; clave: string; nombre: string }>(
+    `select id, clave, nombre
+       from sucursales
+      where activo
+      order by es_matriz desc, clave`
+  )
 
   // ---- Kardex ----------------------------------------------------------
-  let consulta = supabase
-    .from('v_movimientos')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
+  // Los filtros se arman como lista de condiciones con parámetros: nada de
+  // pegar valores dentro del SQL.
+  const cond: string[] = []
+  const par: unknown[] = []
+  const donde = (expr: string, valor: unknown) => { par.push(valor); cond.push(expr.replace('?', `$${par.length}`)) }
 
-  if (f.tipo) consulta = consulta.eq('tipo', f.tipo)
-  if (f.sucursal) consulta = consulta.eq('sucursal', f.sucursal)
-  if (f.usuario) consulta = consulta.eq('usuario', f.usuario)
+  if (f.tipo)     donde('tipo = ?', f.tipo)
+  if (f.sucursal) donde('sucursal = ?', f.sucursal)
+  if (f.usuario)  donde('usuario = ?', f.usuario)
   // El rango es por día completo y con la zona horaria explícita, para que el
   // corte del día sea el del almacén.
-  if (f.desde) consulta = consulta.gte('created_at', `${f.desde}T00:00:00${OFFSET_MX}`)
-  if (f.hasta) consulta = consulta.lte('created_at', `${f.hasta}T23:59:59.999${OFFSET_MX}`)
-  if (f.q) consulta = consulta.ilike('producto', `%${f.q}%`)
-  if (f.referencia) consulta = consulta.eq('referencia_id', f.referencia)
+  if (f.desde)    donde('created_at >= ?', `${f.desde}T00:00:00${OFFSET_MX}`)
+  if (f.hasta)    donde('created_at <= ?', `${f.hasta}T23:59:59.999${OFFSET_MX}`)
+  // El % y el _ son comodines de LIKE: se escapan para buscarlos literales.
+  if (f.q)        donde('producto ilike ?', '%' + f.q.replace(/([%_\\])/g, '\\$1') + '%')
+  if (f.referencia) donde('referencia_id = ?::uuid', f.referencia)
 
+  const where = cond.length ? `where ${cond.join(' and ')}` : ''
+
+  // El total se calcula en la misma consulta con una ventana, para no hacer
+  // dos viajes ni volver a evaluar los filtros.
   // "Cargar más" acumula: la página 2 muestra los 200 más recientes.
-  const { data, error, count } = await consulta.range(0, pagina * POR_PAGINA - 1)
+  const { data: filas, error } = await sql<Movimiento & { total_filas: number }>(
+    `select *, count(*) over ()::int as total_filas
+       from v_movimientos
+       ${where}
+      order by created_at desc, id desc
+      limit ${pagina * POR_PAGINA}`,
+    par
+  )
 
-  const movimientos = (data ?? []) as Movimiento[]
-  const total = count ?? movimientos.length
+  const movimientos = filas as Movimiento[]
+  const total = filas[0]?.total_filas ?? movimientos.length
   const hayMas = movimientos.length < total
 
   const entraron = movimientos.reduce((s, m) => s + (m.cantidad > 0 ? m.cantidad : 0), 0)
@@ -313,9 +322,10 @@ export default async function MovimientosPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

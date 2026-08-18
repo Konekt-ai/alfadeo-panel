@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import Link from 'next/link'
 import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 import { SUCURSALES, FORMAS_PAGO } from '@/lib/constantes'
@@ -37,14 +37,13 @@ export default async function VentasPage({
 }) {
   const params = await searchParams
 
-  const { data, error } = await supabase
-    .from('v_ventas_cobranza')
-    .select('*')
-    .order('fecha', { ascending: false })
-    .order('folio', { ascending: false })
-    .limit(TOPE)
-
-  const todas: VentaCobranza[] = data ?? []
+  const { data: todas, error } = await sql<VentaCobranza>(
+    `select *
+       from v_ventas_cobranza
+      order by fecha desc, folio desc
+      limit $1`,
+    [TOPE]
+  )
 
   const rows = todas.filter((v: VentaCobranza) => {
     if (params.estado && v.estado_cobranza !== params.estado) return false
@@ -119,9 +118,10 @@ export default async function VentasPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>

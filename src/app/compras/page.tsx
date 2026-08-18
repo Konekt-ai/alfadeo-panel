@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { sql, faltaMigracion } from '@/lib/db'
 import { pesos, formatDia } from '@/lib/utils'
 import { SUCURSALES } from '@/lib/constantes'
 import { PlusIcon } from '@heroicons/react/20/solid'
@@ -31,7 +31,7 @@ interface FilaCompra {
   usuario: string | null
   proveedores: { nombre: string } | null
   sucursales: { clave: string } | null
-  compra_items: { id: string }[]
+  num_partidas: number
 }
 
 export default async function ComprasPage({
@@ -41,20 +41,24 @@ export default async function ComprasPage({
 }) {
   const params = await searchParams
 
-  const { data, error } = await supabase
-    .from('compras')
-    .select(`
-      id, folio, fecha, estado, total, moneda,
-      factura_serie, factura_folio, emisor_nombre, usuario,
-      proveedores ( nombre ),
-      sucursales ( clave ),
-      compra_items ( id )
-    `)
-    .order('fecha', { ascending: false })
-    .order('folio', { ascending: false })
-    .limit(300)
-
-  const todas = (data ?? []) as unknown as FilaCompra[]
+  // Los tres embebidos de antes: proveedor y plaza como objeto (para que el
+  // JSX siga usando c.proveedores?.nombre), y las partidas sólo contadas,
+  // que es lo único que se usaba de ellas.
+  const { data: todas, error } = await sql<FilaCompra>(
+    `select c.id, c.folio, c.fecha, c.estado, c.total, c.moneda,
+            c.factura_serie, c.factura_folio, c.emisor_nombre, c.usuario,
+            case when p.id is null then null
+                 else json_build_object('nombre', p.nombre) end as proveedores,
+            case when s.id is null then null
+                 else json_build_object('clave', s.clave) end as sucursales,
+            (select count(*) from compra_items ci where ci.compra_id = c.id)::int
+              as num_partidas
+       from compras c
+       left join proveedores p on p.id = c.proveedor_id
+       left join sucursales  s on s.id = c.sucursal_id
+      order by c.fecha desc, c.folio desc
+      limit 300`
+  )
   const rows = todas.filter(c => {
     if (params.estado && c.estado !== params.estado) return false
     if (params.sucursal && c.sucursales?.clave !== params.sucursal) return false
@@ -117,9 +121,10 @@ export default async function ComprasPage({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
           {error.message}
-          {/relation|column|function|schema cache|does not exist|no existe/i.test(error.message) && (
+          {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
-              Falta correr <code className="font-mono">supabase/reunion-operacion.sql</code> en el SQL Editor de Supabase.
+              Falta preparar la base. En esa computadora corre{' '}
+              <code className="font-mono">instalacion\instalar-base.ps1</code>.
             </p>
           )}
         </div>
@@ -169,7 +174,7 @@ export default async function ComprasPage({
                         }`}>{c.sucursales.clave}</span>
                       ) : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="px-5 py-4 text-right text-gray-600">{c.compra_items?.length ?? 0}</td>
+                    <td className="px-5 py-4 text-right text-gray-600">{c.num_partidas}</td>
                     <td className="px-5 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
                       {pesos(c.total)}
                     </td>

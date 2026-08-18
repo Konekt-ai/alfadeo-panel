@@ -8,7 +8,7 @@
 // existían. Así una compra capturada pero no recibida no infla el inventario.
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { sql, uno, qx, enTransaccion } from '@/lib/db'
 import { usuarioActual } from '@/lib/usuario'
 import type { ProductoPOS } from '@/lib/types'
 import { parsearCFDI, type CfdiConcepto } from './cfdi'
@@ -29,11 +29,12 @@ export async function buscarProductoCompra(q: string, sucursalId: string) {
   const texto = q.trim()
   if (texto.length < 2) return { productos: [] as ProductoPOS[] }
 
-  const { data, error } = await supabase.rpc('buscar_productos_pos', {
-    q: texto, p_sucursal: sucursalId, limite: 8,
-  })
+  const { data, error } = await sql<ProductoPOS>(
+    `select * from buscar_productos_pos($1, $2::uuid, $3)`,
+    [texto, sucursalId, 8]
+  )
   if (error) return { productos: [] as ProductoPOS[], error: error.message }
-  return { productos: (data ?? []) as ProductoPOS[] }
+  return { productos: data }
 }
 
 // ---------------------------------------------------------------------
@@ -73,8 +74,9 @@ export async function leerCFDI(xml: string, sucursalId: string) {
 
   // Si esta factura ya se capturó, no tiene caso volver a hacerlo.
   if (cfdi.uuid) {
-    const { data: previa } = await supabase
-      .from('compras').select('id, folio').eq('factura_uuid', cfdi.uuid).maybeSingle()
+    const { data: previa } = await uno<{ id: string; folio: string | null }>(
+      `select id, folio from compras where factura_uuid = $1`, [cfdi.uuid]
+    )
     if (previa) {
       return {
         ok: false as const,
@@ -123,12 +125,12 @@ async function ligarConcepto(c: CfdiConcepto, sucursalId: string): Promise<Parti
   const clave = (c.no_identificacion ?? '').trim()
   if (/^\d{8,14}$/.test(clave)) {
     base.codigo_barras = clave
-    const { data } = await supabase
-      .from('productos')
-      .select('id, nombre, nombre_comercial')
-      .eq('codigo_barras', clave)
-      .limit(1)
-    const p = data?.[0]
+    const { data: porCodigo } = await sql<{ id: string; nombre: string; nombre_comercial: string | null }>(
+      `select id, nombre, nombre_comercial from productos
+        where codigo_barras = $1 limit 1`,
+      [clave]
+    )
+    const p = porCodigo[0]
     if (p) {
       return { ...base, producto_id: p.id, producto_nombre: p.nombre_comercial ?? p.nombre, match: 'codigo' }
     }
@@ -136,10 +138,11 @@ async function ligarConcepto(c: CfdiConcepto, sucursalId: string): Promise<Parti
 
   // (b) Por nombre. Sólo se propone si el score es alto; por debajo de eso
   //     es peor sugerir mal que no sugerir.
-  const { data } = await supabase.rpc('buscar_productos_pos', {
-    q: c.descripcion, p_sucursal: sucursalId, limite: 1,
-  })
-  const sugerido = ((data ?? []) as ProductoPOS[])[0]
+  const { data: porNombre } = await sql<ProductoPOS>(
+    `select * from buscar_productos_pos($1, $2::uuid, 1)`,
+    [c.descripcion, sucursalId]
+  )
+  const sugerido = porNombre[0]
   if (sugerido && num(sugerido.score) >= 0.55) {
     return {
       ...base,
@@ -200,11 +203,6 @@ export async function crearCompra(entrada: CompraEntrada): Promise<ResultadoCon<
     return { ok: false, error: 'Para recibir la mercancía, todas las partidas tienen que estar ligadas a un producto del catálogo.' }
   }
 
-  const { data: folio, error: errorFolio } = await supabase.rpc('siguiente_folio', {
-    p_ambito: 'compra', p_sucursal_id: entrada.sucursal_id,
-  })
-  if (errorFolio) return { ok: false, error: errorFolio.message }
-
   // Los totales se calculan aquí y no se confía en los del CFDI: las partidas
   // pudieron editarse en pantalla antes de guardar.
   let subtotal = 0
@@ -217,66 +215,79 @@ export async function crearCompra(entrada: CompraEntrada): Promise<ResultadoCon<
   subtotal = Math.round(subtotal * 100) / 100
   iva = Math.round(iva * 100) / 100
 
-  const { data: compra, error } = await supabase
-    .from('compras')
-    .insert({
-      folio,
-      proveedor_id: entrada.proveedor_id,
-      sucursal_id: entrada.sucursal_id,
-      fecha: entrada.fecha,
-      estado: 'borrador',
-      subtotal, iva, total: Math.round((subtotal + iva) * 100) / 100,
-      moneda: entrada.moneda || 'MXN',
-      factura_serie: entrada.factura_serie,
-      factura_folio: entrada.factura_folio,
-      factura_uuid: entrada.factura_uuid,
-      emisor_rfc: entrada.emisor_rfc,
-      emisor_nombre: entrada.emisor_nombre,
-      xml_origen: entrada.xml_origen,
-      usuario: usuarioActual(),
-      notas: entrada.notas,
+  // Folio, cabecera y partidas en UNA transacción: antes, si fallaban las
+  // partidas había que borrar la compra a mano para no quemar el folio.
+  let compra: { id: string }
+  try {
+    compra = await enTransaccion(async ejecutar => {
+      const [{ folio }] = await ejecutar<{ folio: string | null }>(
+        `select siguiente_folio('compra', $1::uuid) as folio`,
+        [entrada.sucursal_id]
+      )
+
+      const [cab] = await ejecutar<{ id: string }>(
+        `insert into compras (folio, proveedor_id, sucursal_id, fecha, estado,
+                              subtotal, iva, total, moneda, factura_serie,
+                              factura_folio, factura_uuid, emisor_rfc,
+                              emisor_nombre, xml_origen, usuario, notas)
+         values ($1, $2::uuid, $3::uuid, $4::date, 'borrador',
+                 $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         returning id`,
+        [
+          folio, entrada.proveedor_id, entrada.sucursal_id, entrada.fecha,
+          subtotal, iva, Math.round((subtotal + iva) * 100) / 100,
+          entrada.moneda || 'MXN', entrada.factura_serie, entrada.factura_folio,
+          entrada.factura_uuid, entrada.emisor_rfc, entrada.emisor_nombre,
+          entrada.xml_origen, usuarioActual(), entrada.notas,
+        ]
+      )
+
+      await ejecutar(
+        `insert into compra_items
+           (compra_id, producto_id, descripcion, clave_prov, codigo_barras,
+            cantidad, costo_unitario, tasa_iva, lote, caducidad, ubicacion, posicion)
+         select $1::uuid, u.producto_id::uuid, u.descripcion, u.clave_prov,
+                u.codigo_barras, u.cantidad, u.costo_unitario, u.tasa_iva,
+                u.lote, u.caducidad::date, u.ubicacion, u.posicion
+           from unnest($2::text[], $3::text[], $4::text[], $5::text[],
+                       $6::numeric[], $7::numeric[], $8::numeric[], $9::text[],
+                       $10::text[], $11::text[], $12::int[])
+                as u(producto_id, descripcion, clave_prov, codigo_barras,
+                     cantidad, costo_unitario, tasa_iva, lote, caducidad,
+                     ubicacion, posicion)`,
+        [
+          cab.id,
+          entrada.partidas.map(p => p.producto_id),
+          entrada.partidas.map(p => p.descripcion),
+          entrada.partidas.map(p => p.clave_prov),
+          entrada.partidas.map(p => p.codigo_barras),
+          entrada.partidas.map(p => p.cantidad),
+          entrada.partidas.map(p => p.costo_unitario),
+          entrada.partidas.map(p => p.tasa_iva),
+          entrada.partidas.map(p => p.lote),
+          entrada.partidas.map(p => p.caducidad),
+          entrada.partidas.map(p => p.ubicacion),
+          entrada.partidas.map((_, i) => i + 1),
+        ]
+      )
+
+      return cab
     })
-    .select('id')
-    .single()
-
-  if (error) return { ok: false, error: error.message }
-
-  const { error: errorItems } = await supabase.from('compra_items').insert(
-    entrada.partidas.map((p, i) => ({
-      compra_id: compra.id,
-      producto_id: p.producto_id,
-      descripcion: p.descripcion,
-      clave_prov: p.clave_prov,
-      codigo_barras: p.codigo_barras,
-      cantidad: p.cantidad,
-      costo_unitario: p.costo_unitario,
-      tasa_iva: p.tasa_iva,
-      lote: p.lote,
-      caducidad: p.caducidad,
-      ubicacion: p.ubicacion,
-      posicion: i + 1,
-    }))
-  )
-
-  if (errorItems) {
-    // La compra sin partidas no sirve para nada; se retira para no dejar
-    // basura ni quemar el folio en un documento vacío.
-    await supabase.from('compras').delete().eq('id', compra.id)
-    return { ok: false, error: errorItems.message }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
   }
 
   let recibida = false
   if (entrada.recibir) {
-    const r = await supabase.rpc('recibir_compra', {
-      p_compra_id: compra.id, p_usuario: usuarioActual(),
-    })
-    if (r.error) {
+    try {
+      await qx(`select recibir_compra($1::uuid, $2)`, [compra.id, usuarioActual()])
+      recibida = true
+    } catch (e) {
       // La compra queda guardada en borrador: se puede recibir después sin
       // recapturarla. Se avisa qué falló.
       revalidatePath('/compras')
-      return { ok: false, error: `La compra se guardó como borrador, pero no se pudo recibir: ${r.error.message}` }
+      return { ok: false, error: `La compra se guardó como borrador, pero no se pudo recibir: ${(e as Error).message}` }
     }
-    recibida = true
   }
 
   revalidatePath('/compras')
@@ -289,12 +300,13 @@ export async function crearCompra(entrada: CompraEntrada): Promise<ResultadoCon<
 // ---------------------------------------------------------------------
 
 export async function recibirCompra(compraId: string): Promise<Resultado> {
-  const { error } = await supabase.rpc('recibir_compra', {
-    p_compra_id: compraId, p_usuario: usuarioActual(),
-  })
-  // El RPC rechaza las partidas sin producto ligado con el nombre de la
-  // partida en el mensaje; se muestra tal cual.
-  if (error) return { ok: false, error: error.message }
+  // La función rechaza las partidas sin producto ligado nombrando la
+  // partida; el mensaje se muestra tal cual.
+  try {
+    await qx(`select recibir_compra($1::uuid, $2)`, [compraId, usuarioActual()])
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 
   revalidatePath('/compras')
   revalidatePath(`/compras/${compraId}`)
@@ -305,11 +317,14 @@ export async function recibirCompra(compraId: string): Promise<Resultado> {
 
 /** Liga una partida al catálogo desde el detalle, sin recapturar la compra. */
 export async function ligarPartida(compraItemId: string, productoId: string, compraId: string): Promise<Resultado> {
-  const { error } = await supabase
-    .from('compra_items')
-    .update({ producto_id: productoId })
-    .eq('id', compraItemId)
-  if (error) return { ok: false, error: error.message }
+  try {
+    await qx(
+      `update compra_items set producto_id = $1::uuid where id = $2::uuid`,
+      [productoId, compraItemId]
+    )
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 
   revalidatePath(`/compras/${compraId}`)
   return { ok: true }
