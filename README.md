@@ -105,7 +105,7 @@ Programas aquí, pruebas en local, commiteas y empujas. Luego entras por SSH y
 corres un comando:
 
 ```bash
-ssh DELL@192.168.1.116
+ssh DELL@<ip-de-la-maquina>    # la dice `estado`, o ipconfig en esa compu
 estado        # ¿está arriba? ¿en qué commit? ¿hay algo nuevo?
 actualizar    # traer, recompilar y reiniciar
 ```

@@ -130,9 +130,15 @@ Lo que **sí** acota el riesgo: el panel ya no está en internet. Vive en la
 computadora del mostrador y sólo se alcanza desde la red de la oficina. La
 salida a Supabase es saliente; nadie entra desde fuera.
 
-Lo que **no** acota: cualquiera conectado a esa WiFi que abra
-`http://192.168.1.116:3002` puede vender, mover inventario y registrar pagos.
-Eso incluye a quien le hayan pasado la clave del WiFi.
+Lo que **no** acota: cualquiera conectado a la misma red que abra
+`http://<ip>:3002` puede vender, mover inventario y registrar pagos.
+
+**Cuidado con en qué red se conecta esa computadora.** El instalador marca
+la red como privada y abre el puerto, y eso es razonable en la WiFi de la
+oficina. En una red institucional o compartida —un campus, un coworking, un
+hotel— significa exponer el panel a todos los que estén en ese segmento.
+Ahí conviene instalar con `-SinRed`, que lo deja accesible sólo desde esa
+computadora.
 
 El selector de usuario del header **no es seguridad**: es una firma para saber
 quién movió qué (punto 8). Cualquiera puede elegir cualquier nombre.
