@@ -4,13 +4,18 @@ Panel de gestión comercial para **Alianza Farmacéutica DEO**. Administra
 solicitudes de abastecimiento, clientes, inventario, proveedores y cotizaciones.
 
 El bot de WhatsApp que alimenta las solicitudes vive en un repo aparte
-(`alfadeo-bot`) y comparte la misma base de datos.
+(`alfadeo-bot`).
+
+> **Ojo con el bot.** Compartía la base con el panel cuando ésta vivía en
+> Supabase. Ahora la base es local y sólo escucha en `localhost`, así que el
+> bot ya no la alcanza. Hay que decidir cómo se reconecta antes de darlo por
+> funcionando.
 
 ## Stack
 
 - **Next.js 14** (App Router, Server Components, Server Actions)
 - **Tailwind CSS v4**
-- **Supabase** (PostgreSQL)
+- **PostgreSQL**, corriendo en la misma computadora que el panel
 
 ## Vistas
 
@@ -42,6 +47,7 @@ El bot de WhatsApp que alimenta las solicitudes vive en un repo aparte
 | --- | --- |
 | `/inventario` | Catálogo: comercial, genérico, miligramos, presentación, lote, caducidad y plaza |
 | `/inventario/nuevo` · `/inventario/[id]` | Alta y edición |
+| `/verificador` | Escanea una caja: si el código ya está, muestra el medicamento en grande; si no, se busca por nombre y queda ligado |
 | `/inventario/importar` | Importa el catálogo de Aspel, con los códigos de barras que necesita el POS |
 | `/proveedores` · `/proveedores/[id]` | Proveedores e importación de listas de precios |
 
@@ -72,14 +78,13 @@ npm run dev                    # http://localhost:3002
 
 | Variable | Para qué |
 | --- | --- |
-| `SUPABASE_URL` | URL del proyecto en Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key. **No** la anon key. Sólo servidor |
+| `DATABASE_URL` | Conexión a PostgreSQL. La escribe sola `instalacion\instalar-postgres.ps1` |
 
 ## La computadora del mostrador
 
-El panel corre **en la computadora de la empresa**, no en la nube. La base
-sigue siendo Supabase, así que de todos modos necesita internet; lo único
-local es el servidor web.
+**Todo** corre en la computadora de la empresa: el panel y la base. No sale
+nada a internet — PostgreSQL escucha sólo en `localhost` y el panel sólo se
+alcanza desde la red de la oficina.
 
 ### Instalarlo
 
@@ -91,9 +96,9 @@ cd C:\alfadeo\panel
 powershell -ExecutionPolicy Bypass -File instalacion\instalar.ps1
 ```
 
-El instalador baja Node portable, pide las llaves de Supabase, verifica que
-la base tenga las migraciones, compila, registra el arranque automático, abre
-el puerto y deja los accesos en el escritorio. Es idempotente: volver a
+El instalador baja Node y PostgreSQL portables, crea la base, corre las
+migraciones, compila, registra el arranque automático y el respaldo diario,
+abre el puerto y deja los accesos en el escritorio. Es idempotente: volver a
 correrlo repara sin romper nada.
 
 Los pasos completos, los comandos del día a día y qué hacer cuando algo falla
@@ -133,14 +138,20 @@ sube igual.
 
 ## No va en la nube
 
-**Decisión tomada:** el panel vive sólo en la computadora de la empresa. No
-se publica en internet.
+**Decisión tomada:** el panel y la base viven sólo en la computadora de la
+empresa. No se publica nada en internet.
 
-Estuvo un tiempo en Vercel, pero era para enseñarle avances al cliente, no
-para operar. Ya se dio de baja.
+Estuvo un tiempo en Vercel con la base en Supabase, pero era para enseñarle
+avances al cliente, no para operar. Las dos cosas ya se quitaron.
 
-Lo único que sale a internet es la conexión a Supabase, que es saliente: nadie
-entra desde fuera.
+Lo que eso implica y hay que tener presente:
+
+- **Los respaldos son responsabilidad de la casa.** Supabase respaldaba solo;
+  un escritorio no. Hay una tarea diaria a la 1:00 (`instalacion/respaldo.ps1`)
+  que conserva 14 diarios y el primero de cada mes. **Apúntala a otro disco o
+  a una carpeta que se sincronice**: un respaldo en el mismo disco no salva de
+  un disco muerto.
+- **Si esa computadora se apaga, no hay sistema.** No hay segunda copia.
 
 ### Nota sobre `output: 'standalone'`
 
@@ -154,13 +165,17 @@ El esquema **no vive en este repositorio** (`.gitignore` excluye los `.sql`).
 Los archivos están en `supabase/` en local. Ver `PENDIENTES.md`, sección
 "Seguridad", para saber dónde respaldarlos.
 
-Migraciones, **en este orden**:
+Migraciones, **en este orden** (las corre `instalacion\instalar-base.ps1`):
 
-1. `cotizador-inteligente.sql` — proveedores, precios, matching y márgenes
-2. `reunion-catalogo-sucursales.sql` — catálogo farmacéutico desglosado,
+1. `00-esquema-base.sql` — catálogo, inventario, clientes, solicitudes y
+   cotizaciones. Se reconstruyó a partir del esquema que ya corría en
+   producción: el `.sql` del arranque del proyecto se había perdido
+2. `cotizador-inteligente.sql` — proveedores, precios, matching y márgenes
+3. `reunion-catalogo-sucursales.sql` — catálogo farmacéutico desglosado,
    sucursales GDL/MTY, existencia por plaza y campos de facturación
-3. `reunion-operacion.sql` — lotes, kardex, punto de venta, cobranza,
+4. `reunion-operacion.sql` — lotes, kardex, punto de venta, cobranza,
    traslados y compras
+5. `99-llaves-foraneas.sql` — al final porque cruzan migraciones
 
 Las tres son aditivas e idempotentes: se pueden volver a correr sin romper
 nada. La tercera avisa por `notice` si encuentra lotes duplicados en lugar

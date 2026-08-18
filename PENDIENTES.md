@@ -43,7 +43,7 @@ qué orden conviene atacarlo.
 | 11 | Descontar desde el punto de venta | `/pos`, pensado para computadora y celular |
 | 16 | Integrar de verdad el punto de venta | El POS es el mismo sistema, no un módulo aparte |
 | 21 | Centralizar todo en una plataforma | Menú agrupado por trabajo: almacén, comercial, administración |
-| 22 | Aprovechar los códigos de barras de Aspel | `/inventario/importar` los carga; el POS acepta el escaneo en el mismo campo que el nombre |
+| 22 | Aprovechar los códigos de barras de Aspel | Dos caminos: `/verificador` los registra escaneando caja por caja, y `/inventario/importar` los carga en bloque desde Aspel. El POS acepta el escaneo en el mismo campo que el nombre |
 | 23 | Control de lotes | Una fila de `inventario` es un lote. Las salidas son FEFO: sale primero lo que caduca antes |
 | 26 | Captura de compras al recibir mercancía | `/compras`, y al recibirla crea los lotes nuevos |
 | 27 | Entregas al cliente institucional | Cada entrega es una venta con folio, lotes y fecha comprometida |
@@ -81,9 +81,11 @@ contabilidad los revise en el panel.
 
 Nada de esto es programación, pero sin ello el sistema opera a medias:
 
-- **Códigos de barras de Aspel** (punto 22). `productos.codigo_barras` sigue
-  vacío. Exporta el catálogo de Aspel y súbelo en `/inventario/importar`.
-  Sin esto, el escaneo del POS no sirve.
+- **Códigos de barras** (punto 22). `productos.codigo_barras` sigue vacío en
+  los 149 productos, así que el escaneo del POS todavía no sirve. Dos formas
+  de llenarlo: pasar cajas por el lector en `/verificador` (lo que se puede
+  empezar hoy mismo) o exportar el catálogo de Aspel y subirlo en
+  `/inventario/importar`.
 - **Inventario de Monterrey** (punto 24). Los 149 registros están en GDL.
   MTY maneja ~25 productos que aún no se capturan.
 - **Razón social y RFC de cada plaza** (punto 9). `sucursales` tiene las
@@ -93,7 +95,23 @@ Nada de esto es programación, pero sin ello el sistema opera a medias:
 - **Stock mínimo** (`productos.stock_minimo`) para que sirvan las alertas de
   reorden.
 
-### 3. Automatizaciones que dependen de terceros
+### 3. El bot de WhatsApp
+
+**El bot compartía la base con el panel cuando ésta vivía en Supabase.** Ahora
+la base es local y escucha sólo en `localhost`: el bot ya no la alcanza y los
+puntos 1, 2, 4, 15 y 39 quedan sin funcionar hasta resolverlo.
+
+Opciones, sin recomendación todavía porque depende de dónde corra el bot:
+
+1. **Mover el bot a la misma computadora.** Lo más simple; ata todo a esa
+   máquina y a que esté prendida.
+2. **Abrir PostgreSQL al bot por un túnel** (ya hay un `cloudflared`
+   instalado). Funciona, pero saca la base a internet, que es justo lo que se
+   decidió no hacer.
+3. **Que el bot hable con el panel por HTTP** en vez de con la base. Es lo
+   más limpio, y obliga a exponer sólo lo que el bot necesita.
+
+### 4. Automatizaciones que dependen de terceros
 
 - **[38] Descarga semanal de reportes de Contalink.** Necesita credenciales y
   saber si Contalink expone API o sólo descarga manual.
@@ -104,7 +122,7 @@ Nada de esto es programación, pero sin ello el sistema opera a medias:
   Un PDF escaneado necesitaría OCR (Textract, Document AI) y siempre va a ser
   menos confiable que el XML. Pídele el XML al proveedor antes de invertir ahí.
 
-### 4. Aspel
+### 5. Aspel
 
 - **[25] Integración con Aspel.** Es el punto que más diferencia al producto y
   el que más trabajo tiene. Por ahora la vía es **exportar de Aspel e importar
@@ -112,7 +130,7 @@ Nada de esto es programación, pero sin ello el sistema opera a medias:
   de Aspel SAE directo, o usar el SDK de Aspel— hay que decidirlas con el
   cliente, porque cambian el esfuerzo por completo.
 
-### 5. Cotizaciones
+### 6. Cotizaciones
 
 - **[14] Arrancar una cotización desde cero**, sin una solicitud previa. Hoy
   `/solicitudes/[id]/cotizar` requiere la solicitud.
@@ -126,9 +144,9 @@ Nada de esto es programación, pero sin ello el sistema opera a medias:
 Decisión tomada: va sin login. El panel consulta Supabase con la *service role
 key*, que salta todas las políticas RLS.
 
-Lo que **sí** acota el riesgo: el panel ya no está en internet. Vive en la
-computadora del mostrador y sólo se alcanza desde la red de la oficina. La
-salida a Supabase es saliente; nadie entra desde fuera.
+Lo que **sí** acota el riesgo: ni el panel ni la base están en internet. Las
+dos viven en la computadora del mostrador; PostgreSQL escucha sólo en
+`localhost` y el panel sólo se alcanza desde la red de la oficina.
 
 Lo que **no** acota: cualquiera conectado a la misma red que abra
 `http://<ip>:3002` puede vender, mover inventario y registrar pagos.
