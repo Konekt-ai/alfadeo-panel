@@ -81,91 +81,55 @@ El panel corre **en la computadora de la empresa**, no en la nube. La base
 sigue siendo Supabase, así que de todos modos necesita internet; lo único
 local es el servidor web.
 
-| | |
-| --- | --- |
-| Equipo | `DESKTOP-17PH81O` · Windows 10 22H2 |
-| En esa máquina | `http://localhost:3002` |
-| Desde el WiFi de la oficina | `http://192.168.1.116:3002` |
-| Todo vive en | `C:\alfadeo` |
-| Log del servidor | `C:\alfadeo\panel.log` (se rota solo a los 5 MB) |
+### Instalarlo
 
-```text
-C:\alfadeo\
-  node\               Node LTS portable
-  git\                Git portable
-  panel\              este repo, clonado
-  iniciar-panel.ps1   lo que corre la tarea programada
-  actualizar.cmd      traer cambios y reiniciar
-  estado.cmd          diagnostico
-  reiniciar.cmd       reiniciar sin traer cambios
-  log.cmd             ultimas lineas del log
-  prueba-lector.html  probar el lector sin el sistema arriba
+Todo lo necesario está en **[instalacion/](instalacion/)**. En resumen:
+
+```powershell
+git clone https://github.com/Konekt-ai/alfadeo-panel.git C:\alfadeo\panel
+cd C:\alfadeo\panel
+powershell -ExecutionPolicy Bypass -File instalacion\instalar.ps1
 ```
 
-Node y Git van **portables** porque `winget` está roto en esa máquina y los
-instaladores piden elevación. Se quitan borrando la carpeta.
+El instalador baja Node portable, pide las llaves de Supabase, verifica que
+la base tenga las migraciones, compila, registra el arranque automático, abre
+el puerto y deja los accesos en el escritorio. Es idempotente: volver a
+correrlo repara sin romper nada.
+
+Los pasos completos, los comandos del día a día y qué hacer cuando algo falla
+están en **[instalacion/LEEME.md](instalacion/LEEME.md)**.
 
 ### Publicar cambios
 
-El ciclo completo: programas aquí, pruebas en local, commiteas y empujas.
-Luego entras por SSH y corres **un comando**.
+Programas aquí, pruebas en local, commiteas y empujas. Luego entras por SSH y
+corres un comando:
 
 ```bash
 ssh DELL@192.168.1.116
-estado        # ¿está arriba? ¿en qué commit? ¿hay algo nuevo en GitHub?
+estado        # ¿está arriba? ¿en qué commit? ¿hay algo nuevo?
 actualizar    # traer, recompilar y reiniciar
 ```
 
-| Comando | Qué hace |
+`actualizar` no toca nada si no hay commits nuevos, compila **antes** de
+reiniciar —si empujas algo que no compila, el mostrador sigue con la versión
+anterior— y usa `reset --hard`, nunca `pull`, para que no pueda quedar un
+conflicto de merge a media mañana.
+
+### Dónde queda
+
+| | |
 | --- | --- |
-| `estado` | Si responde, en qué commit está, si GitHub tiene commits nuevos, cómo está la tarea de arranque |
-| `actualizar` | `git fetch` → `reset --hard` → `npm ci` (sólo si cambió el lockfile) → `build` → reiniciar |
-| `actualizar -Forzar` | Igual, pero recompila aunque no haya nada nuevo |
-| `reiniciar` | Reiniciar sin traer cambios |
-| `log` | Últimas 40 líneas de `panel.log` |
+| En esa máquina | `http://localhost:3002` |
+| Desde el WiFi de la oficina | `http://<ip>:3002` |
+| Todo vive en | `C:\alfadeo` |
+| Log del servidor | `C:\alfadeo\panel.log` (se rota solo a los 5 MB) |
 
-Tres cosas que hace bien y conviene saber:
+Node y Git van **portables** porque `winget` puede estar roto y los
+instaladores piden elevación. Se quitan borrando la carpeta.
 
-- **Si no hay nada nuevo, no toca nada.** No tiene caso tumbar la caja para
-  recompilar lo mismo.
-- **Compila antes de reiniciar.** Si empujas algo que no compila, el
-  mostrador se queda con la versión anterior y el comando te dice por qué
-  falló. Probado: el servidor conserva hasta el mismo PID.
-- **Usa `reset --hard`, nunca `pull`.** Esa máquina es un destino de
-  despliegue, no un lugar donde se programa: así no puede quedar un conflicto
-  de merge a media mañana. Si alguien editó archivos ahí, los enumera antes
-  de descartarlos.
-
-Y usa `npm ci`, no `npm install`: instala exacto desde el lockfile y no lo
-reescribe. Con `install`, el npm de esa máquina ensuciaba el repo en cada
-actualización.
-
-### Arranque
-
-Una tarea programada, **ALFA-DEO Panel**, lo levanta **al prender la
-computadora**, corriendo como `SYSTEM`. No hace falta que nadie inicie sesión
-— importa porque la administración es por SSH. Verificado con un reinicio
-real: volvió sola en 20 segundos.
-
-También se dispara al iniciar sesión, por si alguien la apagó a mano. El
-script de arranque revisa primero si el puerto ya está ocupado, así que
-dispararla dos veces no levanta dos servidores.
-
-Se lanza `next start` directo con node, no `npm run start`: npm mete un
-`cmd.exe` de por medio y luego el proceso hijo queda huérfano ocupando el
-puerto.
-
-Corre el **build de producción**, no `next dev`. En dev cada visita recompila
-y el mostrador lo sentiría lento.
-
-### Red
-
-El puerto 3002 está abierto en el firewall para perfiles **Privado** y de
-dominio, y la WiFi de la oficina se marcó como Privada — venía como Pública,
-y en ese perfil Windows bloquea todo lo entrante.
-
-La IP viene de DHCP. Si el módem se la cambia, los celulares dejan de entrar:
-conviene reservarla en el router.
+La tarea de arranque corre como `SYSTEM` **al prender la computadora**, no al
+iniciar sesión: si reinicias en remoto y nadie entra al escritorio, el panel
+sube igual.
 
 ## No va en la nube
 

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba del lector — ALFA-DEO</title>
+<style>
+  :root { --azul:#003366; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "Segoe UI", sans-serif; background:#f3f4f6; margin:0; padding:24px; color:#111827; }
+  .caja { max-width: 900px; margin:0 auto; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  p.sub { color:#6b7280; font-size:16px; margin:0 0 20px; }
+  .tarjeta { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; margin-bottom:16px; }
+  input {
+    width:100%; padding:16px; font-size:20px; border:2px solid var(--azul);
+    border-radius:8px; outline:none; font-family:ui-monospace, Consolas, monospace;
+  }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th { text-align:left; color:#6b7280; font-size:13px; text-transform:uppercase;
+       letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid #e5e7eb; }
+  td { padding:10px; border-bottom:1px solid #f3f4f6; font-family:ui-monospace, Consolas, monospace; }
+  .ok   { color:#047857; font-weight:600; }
+  .malo { color:#b91c1c; font-weight:600; }
+  .aviso{ color:#b45309; font-weight:600; }
+  .dato { font-size:28px; font-weight:600; }
+  .rejilla { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; }
+  .etq { font-size:13px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
+  button { padding:10px 18px; font-size:15px; border-radius:8px; border:1px solid #d1d5db;
+           background:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="caja">
+  <h1>Prueba del lector de código de barras</h1>
+  <p class="sub">Dispara el lector sobre cualquier caja de medicamento. No necesita internet ni el sistema arriba.</p>
+
+  <div class="tarjeta">
+    <input id="e" autofocus autocomplete="off" placeholder="Dispara el lector aquí...">
+    <div style="margin-top:12px"><button onclick="limpiar()">Limpiar</button></div>
+  </div>
+
+  <div class="tarjeta rejilla">
+    <div><div class="etq">Último código</div><div class="dato" id="cod">—</div></div>
+    <div><div class="etq">Dígitos</div><div class="dato" id="len">—</div></div>
+    <div><div class="etq">Tiempo de tecleo</div><div class="dato" id="ms">—</div></div>
+    <div><div class="etq">¿Manda Enter?</div><div class="dato" id="ent">—</div></div>
+  </div>
+
+  <div class="tarjeta">
+    <div id="veredicto" style="font-size:17px">Esperando el primer disparo…</div>
+  </div>
+
+  <div class="tarjeta">
+    <table>
+      <thead><tr><th>#</th><th>Código leído</th><th>Largo</th><th>ms</th><th>Enter</th><th>Formato</th></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// El POS busca con 250 ms de rebote y agrega solo cuando el código coincide
+// exacto. Aquí se mide justo eso: qué teclea el lector, qué tan rápido, y si
+// cierra con Enter. Con eso se sabe si hay que ajustar el rebote o el lector.
+var REBOTE_POS = 250;
+var e = document.getElementById('e');
+var t0 = 0, n = 0, enter = false;
+
+e.addEventListener('keydown', function (ev) {
+  if (e.value.length === 0 && ev.key.length === 1) { t0 = performance.now(); enter = false; }
+  if (ev.key === 'Enter') { ev.preventDefault(); enter = true; registrar(); }
+});
+
+// Si el lector no manda Enter, el código se queda quieto en la caja: se cierra
+// solo tras una pausa, igual que hace el rebote del POS.
+var temporizador = null;
+e.addEventListener('input', function () {
+  clearTimeout(temporizador);
+  if (!e.value) return;
+  temporizador = setTimeout(function () { if (e.value) { enter = false; registrar(); } }, 600);
+});
+
+function registrar() {
+  clearTimeout(temporizador);
+  var v = e.value.trim();
+  if (!v) return;
+  var ms = Math.round(performance.now() - t0);
+  n++;
+
+  var soloDigitos = /^\d+$/.test(v);
+  var formato = !soloDigitos ? 'trae letras o símbolos'
+              : v.length === 13 ? 'EAN-13'
+              : v.length === 12 ? 'UPC-A'
+              : v.length === 8  ? 'EAN-8'
+              : v.length + ' dígitos';
+
+  var fila = document.createElement('tr');
+  fila.innerHTML = '<td>' + n + '</td><td>' + v + '</td><td>' + v.length + '</td><td>' + ms +
+    '</td><td>' + (enter ? 'sí' : 'no') + '</td><td>' + formato + '</td>';
+  document.getElementById('tb').prepend(fila);
+
+  document.getElementById('cod').textContent = v;
+  document.getElementById('len').textContent = v.length;
+  document.getElementById('ms').textContent  = ms + ' ms';
+  document.getElementById('ent').textContent = enter ? 'Sí' : 'No';
+
+  veredicto(v, ms, soloDigitos);
+  e.value = ''; e.focus();
+}
+
+function veredicto(v, ms, soloDigitos) {
+  var msgs = [];
+  if (!soloDigitos) {
+    msgs.push('<span class="malo">El lector manda caracteres que no son dígitos.</span> ' +
+      'Puede traer un prefijo/sufijo configurado. Hay que quitarlo, porque el POS ' +
+      'trata como escaneo sólo lo que son puros dígitos.');
+  } else {
+    msgs.push('<span class="ok">Formato correcto:</span> puros dígitos, ' + v.length + ' de largo.');
+  }
+  if (ms > REBOTE_POS) {
+    msgs.push('<span class="aviso">Teclea en ' + ms + ' ms, más que los ' + REBOTE_POS +
+      ' ms de rebote del POS.</span> Puede disparar una búsqueda a medio código. ' +
+      'Se sube el rebote en POSClient.tsx.');
+  } else {
+    msgs.push('<span class="ok">Velocidad correcta:</span> ' + ms + ' ms, por debajo de los ' +
+      REBOTE_POS + ' ms de rebote del POS.');
+  }
+  msgs.push(enter
+    ? 'Cierra con Enter — el POS lo agrega en cuanto llega el resultado.'
+    : 'No manda Enter — el POS lo agrega solo por coincidencia exacta del código. También funciona.');
+  document.getElementById('veredicto').innerHTML = msgs.join('<br>');
+}
+
+function limpiar() {
+  document.getElementById('tb').innerHTML = '';
+  n = 0; e.value = ''; e.focus();
+  document.getElementById('veredicto').textContent = 'Esperando el primer disparo…';
+}
+</script>
+</body>
+</html>
