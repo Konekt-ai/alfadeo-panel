@@ -47,15 +47,15 @@ export default async function InventarioPage({
             end as sucursales,
             case when p.id is null then null else
               json_build_object(
-                'id', p.id, 'nombre', p?.nombre,
-                'nombre_comercial', p?.nombre_comercial,
-                'nombre_generico', p?.nombre_generico,
-                'concentracion', p?.concentracion,
-                'forma_farmaceutica', p?.forma_farmaceutica,
-                'presentacion', p?.presentacion,
-                'laboratorio', p?.laboratorio,
-                'lote', coalesce(i.lote, p?.lote),
-                'caducidad', coalesce(i.caducidad, p?.caducidad))
+                'id', p.id, 'nombre', p.nombre,
+                'nombre_comercial', p.nombre_comercial,
+                'nombre_generico', p.nombre_generico,
+                'concentracion', p.concentracion,
+                'forma_farmaceutica', p.forma_farmaceutica,
+                'presentacion', p.presentacion,
+                'laboratorio', p.laboratorio,
+                'lote', coalesce(i.lote, p.lote),
+                'caducidad', coalesce(i.caducidad, p.caducidad))
             end as productos
        from inventario i
        left join sucursales s on s.id = i.sucursal_id
