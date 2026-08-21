@@ -462,7 +462,9 @@ export default function POSClient({
             )}
             {carrito.map(l => {
               const base = redondear(l.cantidad * l.precio_unitario * (1 - l.descuento_pct / 100))
-              const excede = l.cantidad > l.existencia
+              //TODO -- Arreglar excede
+              //const excede = l.cantidad > l.existencia
+              const excede = false
               return (
                 <div key={l.producto_id} className="px-5 py-4">
                   <div className="flex items-start gap-2">

@@ -3,6 +3,7 @@ import { sql, faltaMigracion } from '@/lib/db'
 import { pesos } from '@/lib/utils'
 import { textoEntrega } from '@/lib/entrega'
 import { usuarioActual } from '@/lib/usuario'
+import { avance as avanceCodigos } from '../verificador/acciones'
 import type { Alerta } from '@/lib/types'
 import {
   CalculatorIcon, ArrowsRightLeftIcon, TruckIcon, InboxArrowDownIcon,
@@ -44,7 +45,7 @@ export default async function InicioPage() {
   const hoy = new Date()
   const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString()
 
-  const [alertasRes, cobranzaRes, ventasHoyRes] = await Promise.all([
+  const [alertasRes, cobranzaRes, ventasHoyRes, codigosRes] = await Promise.all([
     sql<Alerta>(`select * from v_alertas`),
     sql<{ saldo: number; estado_cobranza: string; total: number; estado: string }>(
       `select saldo, estado_cobranza, total, estado from v_ventas_cobranza`
@@ -53,6 +54,7 @@ export default async function InicioPage() {
       `select total from ventas where estado = 'cerrada' and fecha >= $1`,
       [inicioDia]
     ),
+    avanceCodigos(),
   ])
 
   const error = alertasRes.error ?? cobranzaRes.error ?? ventasHoyRes.error
@@ -60,6 +62,8 @@ export default async function InicioPage() {
   const alertas = alertasRes.data
   const cobranza = cobranzaRes.data
   const ventasHoy = ventasHoyRes.data
+  // Sin código, la pistola del POS no encuentra el producto (minuta 22).
+  const sinCodigo = Math.max(codigosRes.total - codigosRes.con, 0)
 
   const porCobrar = cobranza
     .filter(v => v.estado === 'cerrada' && Number(v.saldo) > 0)
@@ -104,7 +108,7 @@ export default async function InicioPage() {
       )}
 
       {/* Números del día */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <div className={tarjeta}>
           <div className="text-sm font-medium text-gray-500">Vendido hoy</div>
           <div className="text-2xl font-semibold text-gray-900 mt-1">{pesos(vendidoHoy)}</div>
@@ -131,6 +135,15 @@ export default async function InicioPage() {
           </div>
           <div className="text-sm text-gray-400 mt-0.5">lotes en 60 días</div>
         </div>
+        <Link href="/inventario?sin_codigo=1" className={`${tarjeta} hover:border-[#003366]/30 hover:shadow-sm transition-all`}>
+          <div className="text-sm font-medium text-gray-500">Sin código de barras</div>
+          <div className={`text-2xl font-semibold mt-1 ${sinCodigo > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+            {sinCodigo}
+          </div>
+          <div className="text-sm text-gray-400 mt-0.5">
+            de {codigosRes.total} productos{sinCodigo > 0 ? ' · llenar' : ''}
+          </div>
+        </Link>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

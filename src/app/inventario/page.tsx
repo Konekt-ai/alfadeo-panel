@@ -1,8 +1,9 @@
 import { sql, faltaMigracion } from '@/lib/db'
 import Link from 'next/link'
-import { PlusIcon, MagnifyingGlassIcon, ArrowUpTrayIcon } from '@heroicons/react/20/solid'
+import { PlusIcon, MagnifyingGlassIcon, ArrowUpTrayIcon, QrCodeIcon } from '@heroicons/react/20/solid'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { UBICACIONES, SUCURSALES } from '@/lib/constantes'
+import CodigoInline from './CodigoInline'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,13 +26,14 @@ interface FilaInventario {
     laboratorio: string | null
     lote: string | null
     caducidad: string | null
+    codigo_barras: string | null
   } | null
 }
 
 export default async function InventarioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; ubicacion?: string; vence?: string; sucursal?: string }>
+  searchParams: Promise<{ q?: string; ubicacion?: string; vence?: string; sucursal?: string; sin_codigo?: string }>
 }) {
   const params = await searchParams
   const hoy = new Date().toISOString().split('T')[0]
@@ -55,7 +57,8 @@ export default async function InventarioPage({
                 'presentacion', p.presentacion,
                 'laboratorio', p.laboratorio,
                 'lote', coalesce(i.lote, p.lote),
-                'caducidad', coalesce(i.caducidad, p.caducidad))
+                'caducidad', coalesce(i.caducidad, p.caducidad),
+                'codigo_barras', p.codigo_barras)
             end as productos
        from inventario i
        left join sucursales s on s.id = i.sucursal_id
@@ -63,9 +66,17 @@ export default async function InventarioPage({
       order by i.id desc`
   )
 
+  // Cuánto falta para que el POS pueda escanear todo (minuta 22): se cuenta
+  // sobre el catálogo completo, no sobre lo ya filtrado, para que el chip no
+  // cambie de número según qué más esté buscando el usuario.
+  const sinCodigo = new Set(
+    data.filter(r => !r.productos?.codigo_barras).map(r => r.productos?.id).filter(Boolean)
+  ).size
+
   let rows = data.filter(r => {
     if (params.ubicacion && r.ubicacion !== params.ubicacion) return false
     if (params.sucursal && r.sucursales?.clave !== params.sucursal) return false
+    if (params.sin_codigo === '1' && r.productos?.codigo_barras) return false
     if (params.vence === '30') {
       const cad = r.productos?.caducidad
       if (!cad || cad < hoy || cad > en30dias) return false
@@ -92,7 +103,7 @@ export default async function InventarioPage({
   )
 
   const buildUrl = (o: Record<string, string | undefined>) => {
-    const p = { q: params.q, ubicacion: params.ubicacion, vence: params.vence, sucursal: params.sucursal, ...o }
+    const p = { q: params.q, ubicacion: params.ubicacion, vence: params.vence, sucursal: params.sucursal, sin_codigo: params.sin_codigo, ...o }
     const qs = Object.entries(p).filter(([,v]) => v).map(([k,v]) => `${k}=${encodeURIComponent(v!)}`).join('&')
     return `/inventario${qs ? `?${qs}` : ''}`
   }
@@ -138,6 +149,7 @@ export default async function InventarioPage({
           {params.ubicacion && <input type="hidden" name="ubicacion" value={params.ubicacion} />}
           {params.sucursal && <input type="hidden" name="sucursal" value={params.sucursal} />}
           {params.vence && <input type="hidden" name="vence" value={params.vence} />}
+          {params.sin_codigo && <input type="hidden" name="sin_codigo" value={params.sin_codigo} />}
           <div className="relative">
             <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -182,6 +194,19 @@ export default async function InventarioPage({
               params.vence === 'vencido' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
             }`}>Vencidos</a>
         </div>
+
+        {/* Sin código de barras (minuta 22): mientras no lo tengan, el POS
+            no puede escanear ese producto. */}
+        <div className="flex gap-2 items-center flex-wrap">
+          <span className="text-sm text-gray-500 mr-1 font-medium">Código de barras:</span>
+          <a href={buildUrl({ sin_codigo: params.sin_codigo === '1' ? undefined : '1' })}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+              params.sin_codigo === '1' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+            }`}>
+            <QrCodeIcon className="w-4 h-4" />
+            {sinCodigo === 0 ? 'Todos tienen código' : `Sin código (${sinCodigo})`}
+          </a>
+        </div>
       </div>
 
       {error && (
@@ -206,6 +231,7 @@ export default async function InventarioPage({
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Presentación</th>
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Laboratorio</th>
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Lote</th>
+              <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Código de barras</th>
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Caducidad</th>
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Piezas</th>
               <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Plaza</th>
@@ -215,7 +241,7 @@ export default async function InventarioPage({
           </thead>
           <tbody className="divide-y divide-gray-50">
             {rows.length === 0 && (
-              <tr><td colSpan={10} className="text-center py-20 text-gray-400 text-base">Sin resultados.</td></tr>
+              <tr><td colSpan={11} className="text-center py-20 text-gray-400 text-base">Sin resultados.</td></tr>
             )}
             {rows.map(r => {
               const p = r.productos
@@ -241,6 +267,15 @@ export default async function InventarioPage({
                   <td className="px-5 py-4 text-gray-700">{p?.presentacion ?? '—'}</td>
                   <td className="px-5 py-4 text-gray-500">{p?.laboratorio ?? '—'}</td>
                   <td className="px-5 py-4 font-mono text-sm text-gray-500">{p?.lote ?? '—'}</td>
+                  <td className="px-5 py-4">
+                    {p?.codigo_barras ? (
+                      <span className="font-mono text-sm text-gray-600">{p.codigo_barras}</span>
+                    ) : p?.id ? (
+                      <CodigoInline productoId={p.id} />
+                    ) : (
+                      <span className="text-sm text-gray-300">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex items-center gap-1.5 text-sm font-medium whitespace-nowrap ${
                       vencido ? 'text-red-600' : proxVencer ? 'text-amber-600' : 'text-gray-600'

@@ -54,6 +54,21 @@ const esCodigoBarras = (s: string | null): boolean => !!s && /^\d{8,14}$/.test(s
 export async function evaluarFilas(filas: FilaAspel[]): Promise<{ evaluadas: FilaEvaluada[]; error?: string }> {
   const evaluadas: FilaEvaluada[] = []
 
+  // (0) Códigos que se repiten DENTRO del mismo archivo. Esto no lo detecta
+  // el match contra la base: si Aspel exportó el mismo código en dos filas,
+  // ambas harían match al mismo producto (o, peor, cada una crearía uno
+  // nuevo con el código repetido) y una de las dos pisaría a la otra sin
+  // aviso. Se marca para que lo revise una persona antes de aplicar.
+  const conteoCodigo = new Map<string, number>()
+  for (const f of filas) {
+    if (esCodigoBarras(f.codigo_barras)) {
+      conteoCodigo.set(f.codigo_barras!, (conteoCodigo.get(f.codigo_barras!) ?? 0) + 1)
+    }
+  }
+  const codigosRepetidos = new Set(
+    Array.from(conteoCodigo.entries()).filter(([, n]) => n > 1).map(([c]) => c)
+  )
+
   // (a) Match duro por código de barras, en un solo viaje.
   const codigos = filas.map(f => f.codigo_barras).filter(esCodigoBarras) as string[]
   const porCodigo = new Map<string, { id: string; nombre: string }>()
@@ -90,6 +105,15 @@ export async function evaluarFilas(filas: FilaAspel[]): Promise<{ evaluadas: Fil
 
     if (!f.descripcion && !f.codigo_barras && !f.clave) {
       evaluadas.push({ ...base, match: 'ambiguo', nota: 'Fila vacía.' })
+      continue
+    }
+
+    if (esCodigoBarras(f.codigo_barras) && codigosRepetidos.has(f.codigo_barras!)) {
+      evaluadas.push({
+        ...base,
+        match: 'ambiguo',
+        nota: `El código ${f.codigo_barras} aparece ${conteoCodigo.get(f.codigo_barras!)} veces en este archivo.`,
+      })
       continue
     }
 
