@@ -156,6 +156,21 @@ function mensajeDeError(e: unknown): string {
   if (codigo === '3D000') {
     return 'La base de datos no existe todavia. Corre instalacion\\instalar-base.ps1.'
   }
+
+  // 23505 = valor duplicado. Los dos indices unicos que puede tocar la
+  // gente del mostrador son el del codigo de barras y el del lote; en
+  // crudo el mensaje de Postgres no le dice nada a nadie.
+  if (codigo === '23505') {
+    const detalle = String(err?.message ?? '')
+    if (detalle.includes('uq_productos_codigo_barras')) {
+      return 'Ese codigo de barras ya esta en otro producto. Buscalo en el catalogo en vez de darlo de alta otra vez; si de verdad le toca a este, usa el verificador para movérselo.'
+    }
+    if (detalle.includes('uq_inventario_lote')) {
+      return 'Ese lote ya existe para este producto en esa ubicacion. En vez de crearlo otra vez, ajusta su existencia desde la ficha del producto.'
+    }
+    return `Ya existe un registro con esos datos. ${detalle}`
+  }
+
   return err?.message ?? String(e)
 }
 
