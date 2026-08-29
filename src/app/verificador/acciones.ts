@@ -114,12 +114,27 @@ export async function buscarPorNombre(
 //  3 · Registrar: pegarle el código al producto
 // ---------------------------------------------------------------------
 
+// Lo que devuelve `asignar_codigo_barras`. `fusionados` son los productos
+// vacíos que absorbió; `liberados`, los que sí tenían historial y sólo se
+// quedaron sin código.
+interface RespuestaAsignacion {
+  producto?: string
+  codigo?: string
+  fusionados?: number | string | null
+  liberados?: number | string | null
+}
+
+function aNumero(v: unknown): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
 export async function registrarCodigo(
   productoId: string,
   codigo: string,
   confirmado = false
 ): Promise<
-  | { ok: true; producto: ProductoEncontrado }
+  | { ok: true; producto: ProductoEncontrado; aviso: string | null }
   | { ok: false; error: string }
   | { ok: false; confirmar: string }
 > {
@@ -131,24 +146,28 @@ export async function registrarCodigo(
 
   // Dos comprobaciones antes de pisar nada. Sin ellas se puede borrar en
   // silencio el trabajo de otra persona.
-  const { data: destino } = await uno<{ nombre: string; codigo_barras: string | null }>(
+  const { data: destino, error: errorDestino } = await uno<{ nombre: string; codigo_barras: string | null }>(
     `select coalesce(nombre_comercial, nombre_generico, nombre) as nombre, codigo_barras
        from productos where id = $1::uuid`,
     [productoId]
   )
+  // Un fallo de base no es "el producto no existe": si se confunden, en el
+  // mostrador se acaba borrando el catálogo a mano buscando el problema.
+  if (errorDestino) return { ok: false, error: errorDestino.message }
   if (!destino) return { ok: false, error: 'Ese producto ya no existe.' }
 
-  const { data: ocupado } = await uno<{ id: string; nombre: string }>(
+  const { data: ocupado, error: errorOcupado } = await uno<{ id: string; nombre: string }>(
     `select id, coalesce(nombre_comercial, nombre_generico, nombre) as nombre
        from productos where codigo_barras = $1 and id <> $2::uuid`,
     [c, productoId]
   )
+  if (errorOcupado) return { ok: false, error: errorOcupado.message }
 
   if (!confirmado) {
     if (ocupado) {
       return {
         ok: false,
-        confirmar: `Ese código ya está en "${ocupado.nombre}". Si continúas, se lo quitas a ese producto y se lo pones a "${destino.nombre}".`,
+        confirmar: `Ese código ya está en "${ocupado.nombre}". Si continúas, se lo quitas a ese producto y se lo pones a "${destino.nombre}". Si ese otro producto estaba vacío, los dos registros se vuelven uno solo.`,
       }
     }
     if (destino.codigo_barras && destino.codigo_barras !== c) {
@@ -159,27 +178,74 @@ export async function registrarCodigo(
     }
   }
 
+  // Un `update` a pelo no basta: la columna no tiene índice único, así que
+  // dejaría dos productos con el mismo código y el POS elegiría al azar.
+  // `asignar_codigo_barras` es la puerta buena — si el otro producto estaba
+  // vacío lo FUSIONA (no se pierde nada), y si tenía historial sólo le quita
+  // el código y lo reporta para que alguien lo vuelva a escanear.
+  let r: RespuestaAsignacion | null = null
   try {
-    // Si el código estaba en otro producto se le quita primero: la columna
-    // no tiene índice único, así que sin esto quedarían dos productos con
-    // el mismo código y el POS elegiría al azar.
-    if (ocupado) {
-      await qx(`update productos set codigo_barras = null where id = $1::uuid`, [ocupado.id])
-    }
-    await qx(`update productos set codigo_barras = $1 where id = $2::uuid`, [c, productoId])
+    const filas = await qx<{ r: RespuestaAsignacion }>(
+      `select asignar_codigo_barras($1::uuid, $2) as r`,
+      [productoId, c]
+    )
+    r = filas[0]?.r ?? null
   } catch (e) {
+    // Los `raise exception` de la base ya vienen en español.
     return { ok: false, error: (e as Error).message }
   }
 
-  const { data: producto } = await uno<ProductoEncontrado>(
+  const { data: producto, error } = await uno<ProductoEncontrado>(
     `${SELECT_PRODUCTO} where p.id = $1::uuid`,
     [productoId]
   )
+  if (error) return { ok: false, error: error.message }
+  if (!producto) return { ok: false, error: 'Ese producto ya no existe.' }
+
+  const fusionados = aNumero(r?.fusionados)
+  const liberados = aNumero(r?.liberados)
+  const partes: string[] = []
+  if (fusionados > 0) {
+    partes.push(
+      fusionados === 1
+        ? 'Había otro registro duplicado con ese código y estaba vacío: se fusionó con éste, no se perdió nada.'
+        : `Había ${fusionados} registros duplicados con ese código y estaban vacíos: se fusionaron con éste, no se perdió nada.`
+    )
+  }
+  if (liberados > 0) {
+    partes.push(
+      liberados === 1
+        ? 'A otro producto que sí tiene historial se le quitó ese código: quedó sin código de barras y hay que volver a escanear su caja.'
+        : `A ${liberados} productos que sí tienen historial se les quitó ese código: quedaron sin código de barras y hay que volver a escanear sus cajas.`
+    )
+  }
 
   revalidatePath('/verificador')
   revalidatePath('/inventario')
+  revalidatePath('/pos')
 
-  return { ok: true, producto: producto! }
+  return { ok: true, producto, aviso: partes.length ? partes.join(' ') : null }
+}
+
+// ---------------------------------------------------------------------
+//  3-bis · Ver la ficha de un producto que se eligió por nombre
+// ---------------------------------------------------------------------
+
+/**
+ * Verificador de precios sin lector: cuando lo que se teclea no es un código
+ * (o la caja viene sin código impreso), se busca por nombre y se abre la
+ * ficha del que se elija.
+ */
+export async function consultarProducto(
+  productoId: string
+): Promise<{ producto: ProductoEncontrado | null; error?: string }> {
+  if (!productoId) return { producto: null }
+  const { data, error } = await uno<ProductoEncontrado>(
+    `${SELECT_PRODUCTO} where p.id = $1::uuid`,
+    [productoId]
+  )
+  if (error) return { producto: null, error: error.message }
+  return { producto: data }
 }
 
 // ---------------------------------------------------------------------

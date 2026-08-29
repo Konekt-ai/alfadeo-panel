@@ -79,19 +79,40 @@ contabilidad los revise en el panel.
 
 ### 2. Datos que faltan cargar
 
-Nada de esto es programación, pero sin ello el sistema opera a medias:
+Nada de esto es programación, pero sin ello el sistema opera a medias.
 
-- **Códigos de barras** (punto 22). `productos.codigo_barras` sigue vacío en
-  los 149 productos, así que el escaneo del POS todavía no sirve. Dos formas
-  de llenarlo: pasar cajas por el lector en `/verificador` (lo que se puede
-  empezar hoy mismo) o exportar el catálogo de Aspel y subirlo en
-  `/inventario/importar`.
-- **Inventario de Monterrey** (punto 24). Los 149 registros están en GDL.
-  MTY maneja ~25 productos que aún no se capturan.
-- **Razón social y RFC de cada plaza** (punto 9). `sucursales` tiene las
-  columnas vacías. Se necesitan para facturar, porque son empresas distintas.
+**Ya resuelto (29 ago 2026) — limpieza del catálogo.** El punto de venta
+fallaba y la causa eran los datos, no el código. Había **281 productos para
+sólo 134 nombres reales**, 40 códigos de barras asignados a más de un
+producto, y lotes con `sucursal_id` nulo que el POS nunca podía ver porque
+siempre filtra por plaza.
+
+El caso que reportaron —el linezolid `7506442701794`— juntaba tres fallas: el
+código estaba en dos fichas **inactivas y sin existencia**, mientras las 150
+piezas vivían en **otras dos fichas sin código**, y encima sus lotes no tenían
+plaza. Escanear no devolvía nada y la salida no se podía registrar.
+
+La migración `catalogo-limpio.sql` lo dejó en **128 productos**, 0 lotes sin
+plaza y 1 código repetido. De paso rescató 6 códigos varados en fichas vacías
+(levetiracetam, levofloxacino, linezolid, magaldrato, pregabalina,
+rivaroxabán). Dejó tres herramientas para que no se vuelva a ensuciar:
+`consolidar_productos()`, `asignar_codigo_barras()` y la vista
+`v_productos_duplicados`, que alimenta `/inventario/duplicados`.
+
+Lo que sigue pendiente:
+
+- **49 de 128 productos no tienen código de barras.** Sin código no se pueden
+  escanear. Se registran pasando cajas por el lector en `/verificador`.
+- **Un código repetido sin resolver:** `7506400900399` está en dos productos
+  MICROBIOT distintos y **los dos tienen existencia**, así que no se pueden
+  fusionar a ciegas. Necesita que alguien decida cuál se queda con el código.
+- **Inventario de Monterrey** (punto 24). Todo está en GDL. MTY maneja ~25
+  productos que aún no se capturan.
+- **Razón social y RFC de cada plaza** (punto 9). `sucursales` los tiene
+  vacíos y se necesitan para facturar: son empresas distintas.
+- **Precios de venta.** `productos.precio_base` alimenta el POS; mientras esté
+  vacío, la caja empieza cada línea en cero.
 - **Días de crédito por cliente** (punto 34) y **portal de pagos** (punto 35).
-- **Precios de venta.** `productos.precio_base` alimenta el POS.
 - **Stock mínimo** (`productos.stock_minimo`) para que sirvan las alertas de
   reorden.
 
@@ -124,11 +145,38 @@ Opciones, sin recomendación todavía porque depende de dónde corra el bot:
 
 ### 5. Aspel
 
-- **[25] Integración con Aspel.** Es el punto que más diferencia al producto y
-  el que más trabajo tiene. Por ahora la vía es **exportar de Aspel e importar
-  aquí** (`/inventario/importar`). Las otras dos opciones —leer la base Firebird
-  de Aspel SAE directo, o usar el SDK de Aspel— hay que decidirlas con el
-  cliente, porque cambian el esfuerzo por completo.
+**Dato nuevo (29 ago 2026): usan Aspel ADM, el de la nube — no Aspel SAE de
+escritorio.** El cliente pasó el acceso a `adm.aspel.com.mx`. Eso invalida dos
+de los tres caminos que estaban aquí:
+
+- ~~Leer la base Firebird de Aspel SAE~~ — no hay base local, está en la nube
+- ~~SDK COM en la misma máquina~~ — no hay nada instalado que llamar
+- **Exportar/importar por layout** — sigue sirviendo, no necesita nada extra
+- **API** — Aspel ahora es Siigo Aspel y existe *Siigo API*, cuyo caso de uso
+  documentado es exactamente el nuestro: conectar un POS para generar facturas
+  automáticamente. Las credenciales se generan en *Configuración → Alianzas e
+  integraciones → Credenciales de integración a plataformas digitales*.
+
+**Falta confirmar** que el plan del cliente incluya esa API: Siigo API está
+documentada para Siigo Nube, que puede ser el mismo producto renombrado o no.
+Hay que preguntarle a soporte de Aspel antes de comprometer trabajo.
+
+Para integrar hacen falta las **credenciales de API** (*Usuario API* +
+*Access Key*), no el login del portal: el login maestro da acceso a toda su
+contabilidad, se rompe cuando alguien cambie la contraseña y no se puede
+revocar sin dejar fuera al contador.
+
+**Ojo, esto hay que hablarlo con el cliente:** Aspel ADM ya hace inventarios,
+ventas, compras y CFDI, y su app *ADM Tienda* es un punto de venta. Es muy
+probable que el "punto de venta que adquirieron y no aprovechan" (puntos 16 y
+27 de la minuta) sea justamente ADM Tienda. Lo que el panel aporta y ADM
+casi seguro no: control de lotes con FEFO (23), el catálogo farmacéutico
+desglosado (17-20), el bot de WhatsApp (1, 2, 4, 15, 39), la cobranza con
+alertas y portal tipo IMSS (30-35) y los traslados conservando lote (37).
+
+**Mientras no exista la integración, las ventas del panel NO llegan a Aspel.**
+Cada venta hecha aquí desfasa los dos inventarios. Hay que decidir cuál manda
+antes de que la diferencia crezca.
 
 ### 6. Cotizaciones
 

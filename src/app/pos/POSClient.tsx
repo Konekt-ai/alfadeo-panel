@@ -1,8 +1,8 @@
 'use client'
 
-// La caja (minuta 11, 16, 22, 23, 3).
+// La caja (minuta 11, 16, 22, 23, 3; puntos 2 y 7 del cliente).
 //
-// Tres decisiones que explican cómo está armado:
+// Cinco decisiones que explican cómo está armado:
 //
 //  1. Un solo campo de búsqueda para la pistola y para el teclado. El RPC
 //     acepta nombre o código de barras y le da score 2.00 al código exacto,
@@ -11,11 +11,17 @@
 //     su producto. La mayoría de lo que venden va en 0% (minuta 3).
 //  3. El total y el botón de cobrar viven en una barra fija abajo en el
 //     celular. Lo usan desde el teléfono, no sólo desde la computadora.
+//  4. Si el código escaneado no existe en ningún producto, la venta NO se
+//     atora: se liga aquí mismo, por nombre, y el producto entra al carrito
+//     (punto 2 — 49 de los 128 productos todavía no tienen código).
+//  5. El sobregiro AVISA pero no bloquea, y la existencia se puede refrescar
+//     (punto 7). Ver el comentario largo junto a `sobregiro`.
 
 import { useState, useEffect, useRef, useTransition, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import {
   MagnifyingGlassIcon, PlusIcon, MinusIcon, XMarkIcon, TrashIcon, PrinterIcon,
+  ArrowPathIcon, LinkIcon,
 } from '@heroicons/react/20/solid'
 import {
   ShoppingCartIcon, CheckCircleIcon, ExclamationTriangleIcon, UserIcon,
@@ -25,6 +31,7 @@ import { FORMAS_PAGO, DIAS_CREDITO } from '@/lib/constantes'
 import type { ProductoPOS, FormaPago, UsuarioPanel } from '@/lib/types'
 import {
   buscarProductosPOS, buscarClientesPOS, cerrarVentaPOS, fijarCajero, fijarPlaza,
+  refrescarExistencias, ligarCodigoPOS,
 } from './acciones'
 
 // Los tipos de las acciones no se exportan; se derivan de su firma para que
@@ -40,6 +47,9 @@ interface Linea {
   descuento_pct: number
   tasa_iva: number
   existencia: number
+  // Lo que hay en las demás plazas. Sirve para el aviso de sobregiro: no es
+  // lo mismo "no hay en ningún lado" que "no hay aquí, hay 8 en la otra".
+  existencia_otras: number
   controlado: boolean
 }
 
@@ -47,6 +57,14 @@ const redondear = (n: number) => Math.round(n * 100) / 100
 
 // Una cadena de puros dígitos y larga viene de la pistola, no del teclado.
 const pareceCodigoBarras = (s: string) => /^\d{8,}$/.test(s.trim())
+
+// Un código de barras de producto trae entre 8 y 14 dígitos (EAN-8, UPC-A,
+// EAN-13, ITF-14). Más largo que eso no es un código: casi siempre es el
+// lector pegándole un prefijo, y ligarlo sólo ensuciaría el catálogo.
+const esCodigoLigable = (s: string) => /^\d{8,14}$/.test(s.trim())
+
+const hora = (t: number) =>
+  new Date(t).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
 
 export default function POSClient({
   sucursal,
@@ -77,14 +95,32 @@ export default function POSClient({
   const [requiereFactura, setRequiereFactura] = useState(false)
   const [notas, setNotas] = useState('')
 
+  // Existencia al día (punto 7)
+  const [refrescando, setRefrescando] = useState(false)
+  const [refrescadoEn, setRefrescadoEn] = useState<number | null>(null)
+
+  // Código escaneado que no está en ningún producto (punto 2)
+  const [codigoHuerfano, setCodigoHuerfano] = useState<string | null>(null)
+  const [qLigar, setQLigar] = useState('')
+  const [resLigar, setResLigar] = useState<ProductoPOS[]>([])
+  const [selLigar, setSelLigar] = useState(0)
+  const [buscandoLigar, setBuscandoLigar] = useState(false)
+  const [ligando, startLigado] = useTransition()
+  const [avisoLigado, setAvisoLigado] = useState<string | null>(null)
+
   const inputRef = useRef<HTMLInputElement>(null)
+  const ligarRef = useRef<HTMLInputElement>(null)
   // El texto que disparó la última búsqueda, para reconocer el escaneo
   // cuando llega la respuesta.
   const consultaRef = useRef('')
+  // Espejo del carrito para poder refrescar existencias desde efectos que no
+  // deben volver a correr cada vez que cambia una cantidad.
+  const carritoRef = useRef<Linea[]>([])
 
   const enfocar = useCallback(() => inputRef.current?.focus(), [])
 
   useEffect(() => { enfocar() }, [enfocar])
+  useEffect(() => { carritoRef.current = carrito }, [carrito])
 
   // --- Carrito ---------------------------------------------------------
 
@@ -105,6 +141,7 @@ export default function POSClient({
         descuento_pct: 0,
         tasa_iva: Number(p.tasa_iva ?? 0),
         existencia: Number(p.existencia ?? 0),
+        existencia_otras: Number(p.existencia_otras ?? 0),
         controlado: p.controlado,
       }]
     })
@@ -112,6 +149,38 @@ export default function POSClient({
     setResultados([])
     enfocar()
   }, [enfocar])
+
+  // --- Existencia al día (punto 7) -------------------------------------
+  //
+  // La existencia de cada partida se copió al carrito cuando el producto
+  // entró. Desde entonces pudo cambiar: otra caja vendió, llegó mercancía,
+  // o el dato simplemente estaba mal. Volver a preguntarla es lo que hace
+  // que el aviso de sobregiro valga algo.
+  const refrescarCarrito = useCallback(async () => {
+    const ids = carritoRef.current.map(l => l.producto_id)
+    if (!ids.length) return
+    setRefrescando(true)
+    const r = await refrescarExistencias(ids, sucursal.id)
+    setRefrescando(false)
+    if (r.error) { setError(r.error); return }
+    setCarrito(prev => prev.map(l => {
+      const e = r.existencias[l.producto_id]
+      return e ? { ...l, existencia: e.existencia, existencia_otras: e.existencia_otras } : l
+    }))
+    setRefrescadoEn(Date.now())
+  }, [sucursal.id])
+
+  // Al cambiar de plaza el inventario es OTRO: lo que había en GDL no dice
+  // nada de lo que hay en MTY.
+  useEffect(() => {
+    if (carritoRef.current.length) void refrescarCarrito()
+  }, [refrescarCarrito])
+
+  const abrirCobro = () => {
+    setPanelCobro(true)
+    // Última lectura antes de comprometer la venta.
+    void refrescarCarrito()
+  }
 
   const cambiarLinea = (id: string, campo: keyof Linea, valor: number) => {
     setCarrito(prev => prev.map(l => l.producto_id === id ? { ...l, [campo]: valor } : l))
@@ -123,7 +192,9 @@ export default function POSClient({
 
   useEffect(() => {
     const texto = q.trim()
-    if (texto.length < 2) { setResultados([]); return }
+    // Apagar el indicador aquí también: si no, borrar hasta dejar una letra
+    // deja "Buscando..." encendido para siempre y parece que se colgó.
+    if (texto.length < 2) { setResultados([]); setBuscando(false); return }
 
     let cancelado = false
     setBuscando(true)
@@ -133,17 +204,103 @@ export default function POSClient({
       if (cancelado) return
       setBuscando(false)
       if (r.error) { setError(r.error); return }
+      setError(null)
 
       // Escaneo: si el código coincide exacto, se agrega solo y se limpia.
       // Es lo que espera quien trae la pistola en la mano.
-      const exacto = r.productos.find(p => p.codigo_barras && p.codigo_barras === texto)
-      if (exacto && pareceCodigoBarras(texto)) { agregar(exacto); return }
+      //
+      // PERO puede haber más de un producto con el mismo código de barras
+      // (no debería, pero la columna no tiene índice único; los que quedan
+      // se ven en la vista v_productos_duplicados). En ese caso no se puede
+      // adivinar cuál quiso decir la persona: se le muestran los dos (o
+      // más) para que elija, en vez de agregar el primero en silencio.
+      const exactos = r.productos.filter(p => p.codigo_barras && p.codigo_barras === texto)
+
+      // Una búsqueda nueva cancela el ligado que hubiera pendiente.
+      setCodigoHuerfano(null)
+
+      if (pareceCodigoBarras(texto) && exactos.length === 1) { agregar(exactos[0]); return }
+      if (pareceCodigoBarras(texto) && exactos.length > 1) {
+        setResultados(exactos)
+        setError(
+          `El código ${texto} está asignado a ${exactos.length} productos distintos. ` +
+          `Elige cuál es abajo — hay que corregir esto en el catálogo cuando se pueda.`
+        )
+        return
+      }
+
+      // Escaneo de una caja cuyo código no está registrado (punto 2). Es el
+      // caso de 49 de los 128 productos: sin esto la venta se atora con el
+      // cliente enfrente. Se ofrece ligarlo sin salir de la caja.
+      if (pareceCodigoBarras(texto) && exactos.length === 0) {
+        if (!esCodigoLigable(texto)) {
+          setError(
+            `El código ${texto} no está registrado en ningún producto, y trae ${texto.length} dígitos: ` +
+            'un código de barras de producto tiene entre 8 y 14. Lo más probable es que el lector le ' +
+            'esté pegando un prefijo — revísalo antes de ligarlo a nada.'
+          )
+          setResultados([])
+          return
+        }
+        setCodigoHuerfano(texto)
+        setResultados([])
+        setQLigar('')
+        setSelLigar(0)
+        // El campo queda libre para el siguiente disparo del lector.
+        setQ('')
+        setTimeout(() => ligarRef.current?.focus(), 40)
+        return
+      }
 
       setResultados(r.productos)
     }, 250)
 
     return () => { cancelado = true; clearTimeout(t) }
   }, [q, sucursal.id, agregar])
+
+  // --- Ligar el código huérfano: buscador por nombre --------------------
+
+  useEffect(() => {
+    if (!codigoHuerfano) { setResLigar([]); setBuscandoLigar(false); return }
+    const texto = qLigar.trim()
+    if (texto.length < 2) { setResLigar([]); setBuscandoLigar(false); return }
+
+    let cancelado = false
+    setBuscandoLigar(true)
+    const t = setTimeout(async () => {
+      const r = await buscarProductosPOS(texto, sucursal.id)
+      if (cancelado) return
+      setBuscandoLigar(false)
+      if (r.error) { setError(r.error); return }
+      setResLigar(r.productos)
+      setSelLigar(0)
+    }, 250)
+
+    return () => { cancelado = true; clearTimeout(t) }
+  }, [qLigar, codigoHuerfano, sucursal.id])
+
+  const ligar = (p: ProductoPOS) => {
+    const codigo = codigoHuerfano
+    if (!codigo) return
+    setError(null)
+    startLigado(async () => {
+      const r = await ligarCodigoPOS(p.producto_id, codigo, sucursal.id)
+      if (!r.ok) { setError(r.error); return }
+      setCodigoHuerfano(null)
+      setQLigar(''); setResLigar([]); setSelLigar(0)
+      setAvisoLigado(
+        `Listo: ${codigo} quedó ligado a ${nombreProducto(r.producto)}. ` +
+        `La próxima vez que escanees esa caja, entra sola.` + (r.aviso ? ` ${r.aviso}` : '')
+      )
+      // Y sigue la venta: el producto entra al carrito.
+      agregar(r.producto)
+    })
+  }
+
+  const cancelarLigado = () => {
+    setCodigoHuerfano(null); setQLigar(''); setResLigar([]); setSelLigar(0)
+    enfocar()
+  }
 
   // Buscador de cliente, dentro del panel de cobro.
   useEffect(() => {
@@ -174,6 +331,22 @@ export default function POSClient({
     }
   }, [carrito])
 
+  // --- Sobregiro (punto 7) ---------------------------------------------
+  //
+  // AVISA, PERO NO BLOQUEA. A propósito.
+  //
+  // El mostrador tiene que poder vender aunque el sistema crea que no hay:
+  // la caja está viendo la caja de medicamento en la mano y el sistema está
+  // viendo un número que pudo quedarse atrás. Quien decide es la persona,
+  // no el dato. Antes esto deshabilitaba el botón de cobrar, y por eso en la
+  // computadora del cliente alguien terminó desactivando la validación
+  // entera (`const excede = false`) con tal de poder seguir vendiendo.
+  //
+  // El freno de verdad está en la base: `descontar_fefo` y
+  // `registrar_movimiento` no dejan la existencia en negativo, y su
+  // `raise exception` ya viene redactado en español ("Existencia insuficiente
+  // en esta plaza: hay 3 y se piden 5."). Si la venta no debe pasar, la
+  // rechaza allá y aquí se muestra ese mensaje tal cual, con el número real.
   const sobregiro = carrito.filter(l => l.cantidad > l.existencia)
 
   // --- Cobrar ----------------------------------------------------------
@@ -200,7 +373,11 @@ export default function POSClient({
           descuento_pct: l.descuento_pct,
         })),
       })
-      if (!r.ok) { setError(r.error); return }
+      // Si la base rechaza por existencia, su mensaje ya viene en español
+      // ("Existencia insuficiente en esta plaza: hay 3 y se piden 5.").
+      // Se muestra tal cual: dice el número real, que es justo lo que la
+      // caja necesita saber para decidir.
+      if (!r.ok) { setError(r.error); void refrescarCarrito(); return }
       setTicket(r)
       setPanelCobro(false)
     })
@@ -209,6 +386,8 @@ export default function POSClient({
   const nuevaVenta = () => {
     setTicket(null); setCarrito([]); setCliente(null); setQCliente('')
     setFormaPago('efectivo'); setRequiereFactura(false); setNotas(''); setError(null)
+    setCodigoHuerfano(null); setQLigar(''); setResLigar([]); setAvisoLigado(null)
+    setRefrescadoEn(null)
     enfocar()
   }
 
@@ -376,6 +555,114 @@ export default function POSClient({
             </p>
           </div>
 
+          {/* Confirmación de que el código quedó pegado al producto. */}
+          {avisoLigado && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-base text-emerald-900 flex items-start gap-2">
+              <CheckCircleIcon className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
+              <span className="flex-1">{avisoLigado}</span>
+              <button
+                onClick={() => setAvisoLigado(null)}
+                className="shrink-0 text-emerald-500 hover:text-emerald-800"
+                aria-label="Cerrar aviso"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+
+          {/* --- Código escaneado que no existe todavía (punto 2) --------- */}
+          {codigoHuerfano && (
+            <div className="bg-white border-2 border-amber-300 rounded-xl overflow-hidden">
+              <div className="bg-amber-50 border-b border-amber-200 px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-lg font-semibold text-amber-900">
+                      El código <span className="font-mono">{codigoHuerfano}</span> no está
+                      registrado en ningún producto
+                    </div>
+                    <p className="text-base text-amber-800 mt-1">
+                      Busca el medicamento por su nombre y elígelo: el código le queda pegado y
+                      el producto entra a esta venta. No hay que salir de la caja.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <input
+                  ref={ligarRef}
+                  value={qLigar}
+                  onChange={e => setQLigar(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setSelLigar(s => Math.min(s + 1, resLigar.length - 1)) }
+                    if (e.key === 'ArrowUp')   { e.preventDefault(); setSelLigar(s => Math.max(s - 1, 0)) }
+                    if (e.key === 'Enter')     { e.preventDefault(); const p = resLigar[selLigar]; if (p && !ligando) ligar(p) }
+                    if (e.key === 'Escape')    { e.preventDefault(); cancelarLigado() }
+                  }}
+                  placeholder="Nombre del medicamento…"
+                  autoComplete="off"
+                  className="w-full px-4 py-3.5 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
+                />
+                <p className="text-sm text-gray-500 mt-2">
+                  Flechas para moverte · Enter para ligar y agregar · Escape para cancelar
+                </p>
+              </div>
+
+              <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-[38vh] overflow-y-auto">
+                {buscandoLigar && resLigar.length === 0 && (
+                  <div className="px-5 py-4 text-base text-gray-400">Buscando…</div>
+                )}
+                {!buscandoLigar && qLigar.trim().length >= 2 && resLigar.length === 0 && (
+                  <div className="px-5 py-8 text-center text-base text-gray-400">
+                    Ningún medicamento coincide. Prueba con el nombre comercial.
+                  </div>
+                )}
+                {resLigar.map((p, i) => (
+                  <button
+                    key={p.producto_id}
+                    onMouseEnter={() => setSelLigar(i)}
+                    onClick={() => ligar(p)}
+                    disabled={ligando}
+                    className={`w-full text-left px-5 py-4 transition-colors disabled:opacity-50 ${
+                      i === selLigar ? 'bg-[#003366]/8' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-lg font-semibold text-gray-900">
+                        {nombreProducto(p)}
+                      </span>
+                      {/* Si ya tenía otro código, se le reemplaza: hay que verlo antes. */}
+                      {p.codigo_barras && (
+                        <span className="text-sm font-mono text-amber-700 shrink-0">
+                          ya tiene {p.codigo_barras}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-base text-gray-600 mt-0.5">
+                      {[p.nombre_generico, p.concentracion, p.presentacion, p.laboratorio]
+                        .filter(Boolean).join(' · ') || '—'}
+                      <span className="text-gray-400"> · {p.existencia} pz en {sucursal.clave}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center gap-3">
+                <LinkIcon className="w-5 h-5 text-gray-400 shrink-0" />
+                <span className="text-sm text-gray-500 flex-1">
+                  {ligando ? 'Ligando el código…' : 'Queda guardado para siempre en el catálogo.'}
+                </span>
+                <button
+                  onClick={cancelarLigado}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
           {buscando && <div className="text-base text-gray-400 px-1">Buscando…</div>}
 
           <div className="space-y-2">
@@ -439,18 +726,35 @@ export default function POSClient({
 
         {/* Carrito */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden xl:sticky xl:top-4">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
             <ShoppingCartIcon className="w-5 h-5 text-gray-400" />
             <span className="text-base font-semibold text-gray-900">
               Carrito {carrito.length > 0 && `· ${carrito.length}`}
             </span>
             {carrito.length > 0 && (
-              <button
-                onClick={() => setCarrito([])}
-                className="ml-auto text-sm font-medium text-gray-400 hover:text-red-600 transition-colors"
-              >
-                Vaciar
-              </button>
+              <>
+                {/* Punto 7: la existencia del carrito se puede volver a
+                    preguntar sin perder la venta que se está capturando. */}
+                <button
+                  onClick={() => void refrescarCarrito()}
+                  disabled={refrescando}
+                  className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline disabled:opacity-50"
+                >
+                  <ArrowPathIcon className={`w-4 h-4 ${refrescando ? 'animate-spin' : ''}`} />
+                  {refrescando ? 'Revisando…' : 'Revisar existencias'}
+                </button>
+                <button
+                  onClick={() => setCarrito([])}
+                  className="text-sm font-medium text-gray-400 hover:text-red-600 transition-colors"
+                >
+                  Vaciar
+                </button>
+              </>
+            )}
+            {carrito.length > 0 && refrescadoEn && (
+              <div className="w-full text-sm text-gray-400">
+                Existencias revisadas a las {hora(refrescadoEn)} en {sucursal.clave}
+              </div>
             )}
           </div>
 
@@ -462,6 +766,7 @@ export default function POSClient({
             )}
             {carrito.map(l => {
               const base = redondear(l.cantidad * l.precio_unitario * (1 - l.descuento_pct / 100))
+              // Avisa, no bloquea: ver el comentario de `sobregiro`.
               const excede = l.cantidad > l.existencia
               return (
                 <div key={l.producto_id} className="px-5 py-4">
@@ -526,18 +831,35 @@ export default function POSClient({
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center mt-2">
+                  <div className="flex justify-between items-start gap-3 mt-2">
                     {excede ? (
-                      <span className="text-sm font-medium text-red-600">
-                        Sólo hay {l.existencia} en {sucursal.clave}
+                      <span className="text-sm font-medium text-amber-700">
+                        El sistema sólo tiene {l.existencia} en {sucursal.clave}
+                        {l.existencia_otras > 0 && ` (${l.existencia_otras} en la otra plaza)`}
+                        . Si en el anaquel sí hay, véndelo.
                       </span>
                     ) : <span />}
-                    <span className="text-base font-semibold text-gray-900">{pesos(base)}</span>
+                    <span className="text-base font-semibold text-gray-900 whitespace-nowrap">{pesos(base)}</span>
                   </div>
                 </div>
               )
             })}
           </div>
+
+          {/* El sobregiro se ve, pero el botón sigue vivo (punto 7). */}
+          {sobregiro.length > 0 && (
+            <div className="px-5 py-3 bg-amber-50 border-t border-amber-200 text-sm text-amber-900">
+              <div className="font-semibold">
+                {sobregiro.length === 1
+                  ? 'Una partida pide más de lo que el sistema tiene'
+                  : `${sobregiro.length} partidas piden más de lo que el sistema tiene`}
+              </div>
+              <p className="mt-1">
+                Si en el anaquel sí está, cobra: manda la venta y el sistema se acomoda. Si crees
+                que el número está viejo, dale a <strong>Revisar existencias</strong>.
+              </p>
+            </div>
+          )}
 
           {carrito.length > 0 && (
             <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 space-y-1">
@@ -551,9 +873,8 @@ export default function POSClient({
                 <span>Total</span><span>{pesos(totales.total)}</span>
               </div>
               <button
-                onClick={() => setPanelCobro(true)}
-                disabled={sobregiro.length > 0}
-                className="hidden xl:block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                onClick={abrirCobro}
+                className="hidden xl:block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] transition-colors"
               >
                 Cobrar {pesos(totales.total)}
               </button>
@@ -570,9 +891,8 @@ export default function POSClient({
             <div className="text-xl font-semibold text-gray-900">{pesos(totales.total)}</div>
           </div>
           <button
-            onClick={() => setPanelCobro(true)}
-            disabled={sobregiro.length > 0}
-            className="ml-auto px-6 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg disabled:opacity-40 transition-colors"
+            onClick={abrirCobro}
+            className="ml-auto px-6 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg transition-colors"
           >
             Cobrar
           </button>
@@ -595,6 +915,29 @@ export default function POSClient({
                 <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-base">
                   {error}
                 </div>
+              )}
+
+              {/* Al abrir este panel se releyeron las existencias. Si aun así
+                  alguna partida se pasa, se dice y se deja seguir. */}
+              {sobregiro.length > 0 && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-base text-amber-900">
+                  <div className="font-semibold mb-1">Ojo con la existencia</div>
+                  <ul className="space-y-0.5">
+                    {sobregiro.map(l => (
+                      <li key={l.producto_id}>
+                        {l.descripcion}: se piden {l.cantidad} y el sistema tiene {l.existencia}
+                        {l.existencia_otras > 0 && ` (${l.existencia_otras} en la otra plaza)`}.
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-sm">
+                    Puedes cobrar de todos modos: quien tiene la caja en la mano eres tú.
+                  </p>
+                </div>
+              )}
+
+              {refrescando && (
+                <div className="text-base text-gray-400">Revisando existencias…</div>
               )}
 
               {/* Cliente */}

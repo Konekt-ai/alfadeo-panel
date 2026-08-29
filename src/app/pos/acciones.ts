@@ -11,10 +11,14 @@
 // cliente y no puede abrir una conexión a PostgreSQL.
 
 import { revalidatePath } from 'next/cache'
-import { sql, qx } from '@/lib/db'
+import { sql, uno, qx } from '@/lib/db'
 import { fijarUsuario, fijarSucursal } from '@/lib/usuario'
 import { fechaEntregaEstimada, fechaISO, textoEntrega } from '@/lib/entrega'
 import type { ProductoPOS, TipoCliente, FormaPago } from '@/lib/types'
+
+// Un código de barras de producto trae entre 8 y 14 dígitos (EAN-8, UPC-A,
+// EAN-13, ITF-14). Es lo único que se puede pegar a un producto.
+const CODIGO = /^\d{8,14}$/
 
 // Los `numeric` de Postgres llegan como número o como cadena según el
 // driver; se normalizan una sola vez para no arrastrar NaN al carrito.
@@ -64,6 +68,176 @@ export async function buscarProductosPOS(
       controlado: p.controlado === true,
       lotes: Array.isArray(p.lotes) ? p.lotes : [],
     })),
+  }
+}
+
+// ---------------------------------------------------------------------
+//  1-bis · Existencia al día, y códigos que todavía no existen
+// ---------------------------------------------------------------------
+
+// La forma de ProductoPOS, pero armada a mano para UN producto en UNA plaza.
+// Se usa después de ligar un código: el producto tiene que entrar al carrito
+// con la misma forma que si hubiera salido del buscador.
+const SELECT_PRODUCTO_POS = `
+  select p.id as producto_id, p.nombre, p.nombre_comercial, p.nombre_generico,
+         p.concentracion, p.forma_farmaceutica, p.presentacion, p.laboratorio,
+         p.codigo_barras, p.precio_base, coalesce(p.tasa_iva, 0) as tasa_iva,
+         coalesce(p.controlado, false) as controlado,
+         coalesce((select sum(i.existencia) from inventario i
+                    where i.producto_id = p.id and i.sucursal_id = $2::uuid), 0) as existencia,
+         coalesce((select sum(i.existencia) from inventario i
+                    where i.producto_id = p.id
+                      and i.sucursal_id is distinct from $2::uuid), 0) as existencia_otras,
+         2.0::real as score,
+         coalesce((
+           select jsonb_agg(jsonb_build_object(
+                    'lote', i.lote, 'caducidad', i.caducidad,
+                    'ubicacion', i.ubicacion, 'existencia', i.existencia,
+                    'sucursal', s.clave) order by i.caducidad asc nulls last)
+             from inventario i
+             left join sucursales s on s.id = i.sucursal_id
+            where i.producto_id = p.id
+              and coalesce(i.existencia, 0) > 0
+              and i.sucursal_id = $2::uuid
+         ), '[]'::jsonb) as lotes
+    from productos p
+   where p.id = $1::uuid`
+
+interface FilaExistencia {
+  producto_id: string
+  existencia: number | string | null
+  existencia_otras: number | string | null
+}
+
+export interface ExistenciaAlDia {
+  existencia: number
+  existencia_otras: number
+}
+
+/**
+ * Vuelve a leer la existencia de las partidas del carrito (punto 7).
+ *
+ * El carrito se queda con la existencia del momento en que se agregó el
+ * producto. Si otra caja vendió mientras tanto —o si el dato estaba mal— el
+ * aviso de sobregiro miente en las dos direcciones: alarma de más o deja
+ * pasar de más. Esto lo vuelve a preguntar a la base.
+ */
+export async function refrescarExistencias(
+  productoIds: string[],
+  sucursalId: string,
+): Promise<{ existencias: Record<string, ExistenciaAlDia>; error?: string }> {
+  const ids = productoIds.filter(Boolean)
+  if (!ids.length || !sucursalId) return { existencias: {} }
+
+  const { data, error } = await sql<FilaExistencia>(
+    `select p.id as producto_id,
+            coalesce((select sum(i.existencia) from inventario i
+                       where i.producto_id = p.id and i.sucursal_id = $2::uuid), 0) as existencia,
+            coalesce((select sum(i.existencia) from inventario i
+                       where i.producto_id = p.id
+                         and i.sucursal_id is distinct from $2::uuid), 0) as existencia_otras
+       from productos p
+      where p.id = any($1::uuid[])`,
+    [ids, sucursalId]
+  )
+  if (error) return { existencias: {}, error: error.message }
+
+  const existencias: Record<string, ExistenciaAlDia> = {}
+  for (const f of data) {
+    existencias[f.producto_id] = {
+      existencia: num(f.existencia),
+      existencia_otras: num(f.existencia_otras),
+    }
+  }
+  return { existencias }
+}
+
+// Lo que devuelve `asignar_codigo_barras`: cuántos productos vacíos absorbió
+// y a cuántos —con historial— sólo les quitó el código.
+interface RespuestaAsignacion {
+  producto?: string
+  codigo?: string
+  fusionados?: number | string | null
+  liberados?: number | string | null
+}
+
+/**
+ * Liga un código de barras a un producto sin salir de la caja (punto 2).
+ *
+ * Hoy 49 de los 128 productos no tienen código: escanear su caja no encuentra
+ * nada y la venta se atora. En vez de mandar a la persona al verificador con
+ * el cliente enfrente, se elige el producto por nombre aquí mismo y el código
+ * queda pegado para siempre.
+ *
+ * `asignar_codigo_barras` es la única puerta: si el código estaba en otro
+ * producto, lo fusiona (si estaba vacío) o se lo quita y lo reporta (si tenía
+ * historial). Un `update` a pelo dejaría dos productos con el mismo código.
+ */
+export async function ligarCodigoPOS(
+  productoId: string,
+  codigo: string,
+  sucursalId: string,
+): Promise<
+  | { ok: true; producto: ProductoPOS; aviso: string | null }
+  | { ok: false; error: string }
+> {
+  const c = codigo.trim()
+  if (!CODIGO.test(c)) {
+    return { ok: false, error: `"${c}" no parece un código de barras: deben ser de 8 a 14 dígitos.` }
+  }
+  if (!productoId) return { ok: false, error: 'Elige a qué producto pertenece el código.' }
+  if (!sucursalId) return { ok: false, error: 'Falta la plaza: el inventario es por plaza.' }
+
+  let r: RespuestaAsignacion | null = null
+  try {
+    const filas = await qx<{ r: RespuestaAsignacion }>(
+      `select asignar_codigo_barras($1::uuid, $2) as r`,
+      [productoId, c]
+    )
+    r = filas[0]?.r ?? null
+  } catch (e) {
+    // Los `raise exception` de la base vienen en español; se pasan tal cual.
+    return { ok: false, error: (e as Error).message }
+  }
+
+  const { data: producto, error } = await uno<ProductoPOS>(SELECT_PRODUCTO_POS, [productoId, sucursalId])
+  if (error) return { ok: false, error: error.message }
+  if (!producto) return { ok: false, error: 'Ese producto ya no existe.' }
+
+  const fusionados = num(r?.fusionados)
+  const liberados = num(r?.liberados)
+  const partes: string[] = []
+  if (fusionados > 0) {
+    partes.push(
+      `Se ${fusionados === 1 ? 'fusionó 1 producto duplicado que estaba vacío' :
+        `fusionaron ${fusionados} productos duplicados que estaban vacíos`} y tenía${fusionados === 1 ? '' : 'n'} ese código.`
+    )
+  }
+  if (liberados > 0) {
+    partes.push(
+      liberados === 1
+        ? 'Se le quitó el código a otro producto que sí tiene historial: quedó sin código de barras y hay que volver a escanear su caja en el verificador.'
+        : `Se les quitó el código a ${liberados} productos que sí tienen historial: quedaron sin código de barras y hay que volver a escanear sus cajas en el verificador.`
+    )
+  }
+
+  revalidatePath('/inventario')
+  revalidatePath('/verificador')
+  revalidatePath('/pos')
+
+  return {
+    ok: true,
+    producto: {
+      ...producto,
+      precio_base: numONulo(producto.precio_base),
+      tasa_iva: num(producto.tasa_iva),
+      existencia: num(producto.existencia),
+      existencia_otras: num(producto.existencia_otras),
+      score: num(producto.score),
+      controlado: producto.controlado === true,
+      lotes: Array.isArray(producto.lotes) ? producto.lotes : [],
+    },
+    aviso: partes.length ? partes.join(' ') : null,
   }
 }
 
