@@ -243,7 +243,10 @@ export default async function InventarioPage({
               and x.sucursal_id is not distinct from i.sucursal_id
          ) tp on true
          ${lista.where}
+        -- Dentro de cada producto, los lotes en cero van al final del desglose.
+        -- Que el PRODUCTO agotado se vaya al final se hace al agrupar, abajo.
         order by coalesce(nullif(btrim(p.nombre_comercial), ''), p.nombre_generico, p.nombre) asc nulls last,
+                 coalesce(i.existencia, 0) > 0 desc,
                  ${CAD} asc nulls last`,
       lista.args
     ),
@@ -336,6 +339,13 @@ export default async function InventarioPage({
       if (gravedad(r.estado_lote) > gravedad(g.peor)) g.peor = r.estado_lote
     }
   }
+
+  // Lo que tiene piezas va primero; los agotados, al final. No es un filtro:
+  // siguen ahí. El sort es estable, así que cada bloque conserva el orden
+  // alfabético que ya trae la consulta. Se ordena aquí y no en SQL porque
+  // "agotado" depende del total del producto con los filtros puestos, y ese
+  // total apenas se acaba de sumar.
+  grupos.sort((a, b) => Number(b.total > 0) - Number(a.total > 0))
 
   // -------------------------------------------------------------- enlaces --
 
