@@ -157,6 +157,9 @@ Con `-Aplicar` pide escribir `CERO`, saca un respaldo y hace todo en una
 transacción. Mientras no se cargue el inventario nuevo, **el POS no puede
 vender**.
 
+Después, el Excel del conteo se sube en el panel: **Inventario → Cargar
+conteo** (`/inventario/cargar-existencias`), una vez por plaza.
+
 ---
 
 ## Administrar por SSH
