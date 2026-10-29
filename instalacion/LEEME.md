@@ -142,6 +142,23 @@ insert into usuarios_panel (nombre, rol) values
 
 ---
 
+## Poner el inventario en cero
+
+Para volver a cargar todo desde un conteo nuevo. Los productos y los lotes
+se quedan; sólo las piezas quedan en 0, con un ajuste por lote en el kardex.
+
+```powershell
+cd C:\alfadeo\panel
+powershell -ExecutionPolicy Bypass -File instalacion\existencias-en-cero.ps1            # vista previa
+powershell -ExecutionPolicy Bypass -File instalacion\existencias-en-cero.ps1 -Aplicar   # hacerlo
+```
+
+Con `-Aplicar` pide escribir `CERO`, saca un respaldo y hace todo en una
+transacción. Mientras no se cargue el inventario nuevo, **el POS no puede
+vender**.
+
+---
+
 ## Administrar por SSH
 
 Windows 10 trae servidor SSH, pero apagado. Para encenderlo, en esa
