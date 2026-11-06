@@ -108,7 +108,7 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
   const activo = producto.activo !== false
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/inventario"
         className="inline-flex items-center gap-1.5 text-base text-gray-400 hover:text-gray-600 mb-6"
@@ -117,9 +117,9 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
       </Link>
 
       {/* ---- Encabezado --------------------------------------------------- */}
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-gray-900">{titulo}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 break-words min-w-0">{titulo}</h1>
           {!activo && (
             <span className="text-sm font-semibold px-2.5 py-1 rounded-md bg-gray-200 text-gray-600">
               Desactivado
@@ -136,11 +136,11 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
             .filter(Boolean)
             .join(' · ') || 'Sin desglose capturado'}
         </p>
-        <div className="flex flex-wrap items-center gap-4 mt-3 text-base">
-          <span className="inline-flex items-center gap-1.5 text-gray-600">
-            <QrCodeIcon className="w-4 h-4 text-gray-400" />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-base">
+          <span className="inline-flex items-center gap-1.5 text-gray-600 min-w-0">
+            <QrCodeIcon className="w-4 h-4 text-gray-400 shrink-0" />
             {producto.codigo_barras
-              ? <span className="font-mono">{producto.codigo_barras}</span>
+              ? <span className="font-mono break-all">{producto.codigo_barras}</span>
               : <span className="text-amber-700">Sin código de barras</span>}
           </span>
           <span className="text-gray-600">
@@ -166,7 +166,7 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
 
       {/* ---- Historial ---------------------------------------------------- */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mt-6">
-        <div className="px-6 py-5 border-b border-gray-100">
+        <div className="px-4 sm:px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900 inline-flex items-center gap-2">
             <ClockIcon className="w-5 h-5 text-gray-400" />
             Últimos movimientos
@@ -176,7 +176,53 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
             <Link href="/movimientos" className="text-[#003366] hover:underline">Movimientos</Link>.
           </p>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* Celular y tablet: un renglón apilado por movimiento. */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {movimientos.length === 0 && (
+            <div className="text-center py-12 text-gray-400 text-base">
+              Todavía no se le ha movido nada a este producto.
+            </div>
+          )}
+          {movimientos.map(m => (
+            <div key={m.id} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${movimientoColor(m.tipo)}`}>
+                    {movimientoLabel(m.tipo)}
+                  </span>
+                  {m.sucursal && (
+                    <span className={`text-sm font-semibold px-2 py-0.5 rounded-md ${
+                      m.sucursal === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {m.sucursal}
+                    </span>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={`font-semibold ${m.cantidad > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {m.cantidad > 0 ? '+' : '−'}{piezas(Math.abs(Number(m.cantidad)))}
+                  </div>
+                  <div className="text-sm text-gray-500 whitespace-nowrap">
+                    quedó en <strong className="text-gray-900">{piezas(m.existencia_despues)}</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-500 mt-1.5">
+                {formatDate(m.created_at)}
+                {m.lote && <> · <span className="font-mono">{m.lote}</span></>}
+                {m.caducidad && <> · {formatDia(m.caducidad)}</>}
+              </div>
+              {(m.motivo || m.usuario) && (
+                <div className="text-sm text-gray-600 mt-0.5 break-words">
+                  {[m.motivo, m.usuario].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">

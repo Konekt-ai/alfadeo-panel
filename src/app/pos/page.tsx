@@ -31,14 +31,14 @@ export default async function POSPage() {
   // POS estaba roto; ahora dice qué falta.
   if (usuariosRes.error) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="text-2xl font-semibold text-gray-900">Punto de venta</h1>
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5 mt-6 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 sm:p-5 mt-6 text-base break-words">
           {usuariosRes.error.message}
           {faltaMigracion(usuariosRes.error.message) && (
             <p className="mt-2 text-sm">
               Falta preparar la base. En esa computadora corre{' '}
-              <code className="font-mono">instalacion\instalar-base.ps1</code>.
+              <code className="font-mono break-all">instalacion\instalar-base.ps1</code>.
               Sin eso no existen las ventas, los movimientos ni el control de lotes.
             </p>
           )}
@@ -49,14 +49,14 @@ export default async function POSPage() {
 
   if (!sucursal) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="text-2xl font-semibold text-gray-900">Punto de venta</h1>
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5 mt-6 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 sm:p-5 mt-6 text-base break-words">
           No hay ninguna plaza dada de alta. El inventario es por plaza, así que sin
           eso no se puede vender.
           <p className="mt-2 text-sm">
             Falta preparar la base. En esa computadora corre{' '}
-            <code className="font-mono">instalacion\instalar-base.ps1</code>.
+            <code className="font-mono break-all">instalacion\instalar-base.ps1</code>.
           </p>
         </div>
       </div>

@@ -147,8 +147,8 @@ export default async function TrasladoDetallePage({
   // decirlo; si simplemente no existe el folio, es un 404.
   if (error && faltaMigracion(error.message)) {
     return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base break-words">
           {error.message}
           <p className="mt-2 text-sm">
             Falta preparar la base. En esa computadora corre{' '}
@@ -184,8 +184,34 @@ export default async function TrasladoDetallePage({
     `/movimientos?referencia=${t.id}&tipo=${tipo}` +
     (clave ? `&sucursal=${encodeURIComponent(clave)}` : '')
 
+  // ---- Piezas que comparten la tabla y los renglones de celular ---------
+  const detalleProducto = (p: ProductoFila) =>
+    [p.concentracion, p.presentacion, p.laboratorio].filter(Boolean).join(' · ') || '—'
+
+  const lotesSalida = (item: ItemFila) => {
+    const lotes = item.lotes ?? []
+    return lotes.length === 0 ? (
+      <span className="text-sm text-gray-400">
+        Se define al enviar: sale primero lo que caduca antes (FEFO).
+      </span>
+    ) : (
+      <div className="flex flex-wrap gap-1.5">
+        {lotes.map((l, i) => (
+          <span
+            key={`${item.id}-${l.lote ?? 'sinlote'}-${i}`}
+            className="text-sm font-medium text-gray-700 bg-gray-100 px-2.5 py-1 rounded-md break-all"
+          >
+            {l.lote ?? 'sin lote'} · cad. {formatDia(l.caducidad)} ·{' '}
+            {Number(l.cantidad ?? 0).toLocaleString('es-MX')} pz
+            {l.ubicacion && ` · ${l.ubicacion}`}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/traslados"
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6"
@@ -193,10 +219,10 @@ export default async function TrasladoDetallePage({
         <ArrowLeftIcon className="w-3.5 h-3.5" /> Traslados
       </Link>
 
-      <div className="flex items-start justify-between gap-4 mb-8 flex-wrap">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
+        <div className="min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold text-gray-900 font-mono">
+            <h1 className="text-2xl font-semibold text-gray-900 font-mono break-all">
               {t.folio ?? 'Traslado sin folio'}
             </h1>
             <span className={`text-sm font-semibold px-2.5 py-1 rounded-md ${trasladoColor(t.estado)}`}>
@@ -210,11 +236,11 @@ export default async function TrasladoDetallePage({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-base font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 whitespace-nowrap">
+          <span className="text-base font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 break-words sm:whitespace-nowrap">
             {origen?.clave ?? '—'} · {origenNombre}
           </span>
-          <ArrowRightIcon className="w-5 h-5 text-gray-300" />
-          <span className="text-base font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 whitespace-nowrap">
+          <ArrowRightIcon className="w-5 h-5 text-gray-300 shrink-0" />
+          <span className="text-base font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 break-words sm:whitespace-nowrap">
             {destino?.clave ?? '—'} · {destinoNombre}
           </span>
         </div>
@@ -222,7 +248,7 @@ export default async function TrasladoDetallePage({
 
       {/* El error del RPC, tal cual lo manda Postgres. */}
       {errorRpc && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base break-words">
           {errorRpc}
           {faltaMigracion(errorRpc) && (
             <p className="mt-2 text-sm">
@@ -234,7 +260,7 @@ export default async function TrasladoDetallePage({
       )}
 
       {/* Encabezado */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6 mb-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <Dato titulo="Paquetería" valor={t.paqueteria ?? '—'} />
           <Dato titulo="Guía" valor={t.guia ?? '—'} mono />
@@ -253,7 +279,7 @@ export default async function TrasladoDetallePage({
 
       {/* Partidas */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+        <div className="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-base font-semibold text-gray-900">
             Partidas
             <span className="text-base font-normal text-gray-500 ml-2">
@@ -267,7 +293,8 @@ export default async function TrasladoDetallePage({
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Escritorio: tabla. */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[760px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -286,18 +313,13 @@ export default async function TrasladoDetallePage({
               )}
               {items.map(item => {
                 const p = item.productos
-                const lotes = item.lotes ?? []
                 return (
                   <tr key={item.id} className="align-top">
                     <td className="px-5 py-4">
                       <div className="font-semibold text-gray-900">
                         {p ? nombreProducto(p) : 'Producto no encontrado'}
                       </div>
-                      {p && (
-                        <div className="text-sm text-gray-500 mt-0.5">
-                          {[p.concentracion, p.presentacion, p.laboratorio].filter(Boolean).join(' · ') || '—'}
-                        </div>
-                      )}
+                      {p && <div className="text-sm text-gray-500 mt-0.5">{detalleProducto(p)}</div>}
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-lg font-semibold text-gray-900">
@@ -305,37 +327,50 @@ export default async function TrasladoDetallePage({
                       </span>
                       <span className="text-sm text-gray-400 ml-1.5">pz</span>
                     </td>
-                    <td className="px-5 py-4">
-                      {lotes.length === 0 ? (
-                        <span className="text-sm text-gray-400">
-                          Se define al enviar: sale primero lo que caduca antes (FEFO).
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {lotes.map((l, i) => (
-                            <span
-                              key={`${item.id}-${l.lote ?? 'sinlote'}-${i}`}
-                              className="text-sm font-medium text-gray-700 bg-gray-100 px-2.5 py-1 rounded-md"
-                            >
-                              {l.lote ?? 'sin lote'} · cad. {formatDia(l.caducidad)} ·{' '}
-                              {Number(l.cantidad ?? 0).toLocaleString('es-MX')} pz
-                              {l.ubicacion && ` · ${l.ubicacion}`}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
+                    <td className="px-5 py-4">{lotesSalida(item)}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+
+        {/* Celular y tablet: un renglón por partida, con la cantidad a la
+            derecha y los lotes abajo. */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {items.length === 0 && (
+            <p className="text-center py-12 px-4 text-gray-400 text-base">
+              Este traslado no tiene partidas.
+            </p>
+          )}
+          {items.map(item => {
+            const p = item.productos
+            return (
+              <div key={item.id} className="px-4 sm:px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">
+                      {p ? nombreProducto(p) : 'Producto no encontrado'}
+                    </div>
+                    {p && <div className="text-sm text-gray-500 mt-0.5">{detalleProducto(p)}</div>}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="text-lg font-semibold text-gray-900">
+                      {Number(item.cantidad).toLocaleString('es-MX')}
+                    </span>
+                    <span className="text-sm text-gray-400 ml-1.5">pz</span>
+                  </div>
+                </div>
+                <div className="mt-3">{lotesSalida(item)}</div>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Qué se puede hacer, según el estado */}
       {t.estado === 'borrador' && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start gap-2.5 mb-5">
             <InformationCircleIcon className="w-5 h-5 text-[#003366] shrink-0 mt-0.5" />
             <p className="text-base text-gray-700">
@@ -369,7 +404,7 @@ export default async function TrasladoDetallePage({
       )}
 
       {t.estado === 'en_transito' && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start gap-2.5 mb-5">
             <InformationCircleIcon className="w-5 h-5 text-[#003366] shrink-0 mt-0.5" />
             <p className="text-base text-gray-700">
@@ -410,10 +445,10 @@ export default async function TrasladoDetallePage({
       )}
 
       {t.estado === 'recibido' && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 md:p-6">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start gap-2.5">
             <CheckCircleIcon className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
+            <div className="min-w-0">
               <p className="text-base text-emerald-900">
                 Recibido en <strong>{destinoNombre}</strong>
                 {t.fecha_recepcion && ` el ${formatDate(t.fecha_recepcion)}`}. El documento ya no
@@ -422,13 +457,13 @@ export default async function TrasladoDetallePage({
               <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3">
                 <Link
                   href={urlKardex('traslado_entrada', destino?.clave)}
-                  className="text-base font-medium text-[#003366] hover:underline"
+                  className="text-base font-medium text-[#003366] hover:underline break-words"
                 >
                   Ver la entrada en {destinoNombre} →
                 </Link>
                 <Link
                   href={urlKardex('traslado_salida', origen?.clave)}
-                  className="text-base font-medium text-[#003366] hover:underline"
+                  className="text-base font-medium text-[#003366] hover:underline break-words"
                 >
                   Ver la salida de {origenNombre} →
                 </Link>
@@ -439,7 +474,7 @@ export default async function TrasladoDetallePage({
       )}
 
       {t.estado === 'cancelado' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 md:p-6 text-base text-gray-600">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 sm:p-6 text-base text-gray-600">
           Este traslado se canceló antes de enviarse: no movió inventario en ninguna plaza.
         </div>
       )}
@@ -451,7 +486,7 @@ function Dato({ titulo, valor, mono }: { titulo: string; valor: string; mono?: b
   return (
     <div>
       <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{titulo}</div>
-      <div className={`text-base text-gray-900 mt-1 ${mono ? 'font-mono' : ''}`}>{valor}</div>
+      <div className={`text-base text-gray-900 mt-1 ${mono ? 'font-mono break-all' : 'break-words'}`}>{valor}</div>
     </div>
   )
 }

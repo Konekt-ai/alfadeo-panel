@@ -33,7 +33,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   const errorEsquema = ventaRes.error && faltaMigracion(ventaRes.error.message)
   if (errorEsquema) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {ventaRes.error?.message}
           <p className="mt-2 text-sm">
@@ -52,24 +52,47 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   const pagos = pagosRes.data
 
   const detalle = 'bg-white border border-gray-200 rounded-xl'
+  const ligaAccion = 'inline-flex items-center justify-center text-center w-full sm:w-auto px-5 py-3 sm:p-0 bg-white sm:bg-transparent border border-gray-300 sm:border-0 rounded-lg text-base font-medium text-[#003366] hover:underline'
   const dato = (label: string, valor: React.ReactNode) => (
-    <div>
+    <div className="min-w-0">
       <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{label}</div>
-      <div className="text-base text-gray-900 mt-0.5">{valor}</div>
+      <div className="text-base text-gray-900 mt-0.5 break-words">{valor}</div>
     </div>
   )
 
+  // Lo que comparten la tabla de partidas (escritorio) y los bloques (teléfono).
+  // De qué lote salió: es la trazabilidad que exige farmacia (minuta 23).
+  const lotesDe = (it: VentaItem) => {
+    const lotes: Lote[] = Array.isArray(it.lotes) ? it.lotes : []
+    return (
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-sm text-gray-500">
+        {lotes.length === 0 && <span>—</span>}
+        {lotes.map((l, j) => (
+          <span key={j} className="font-mono break-all">
+            {l.lote ?? 's/l'} · {Number(l.cantidad ?? 0)} pz
+            {l.caducidad && ` · cad. ${formatDia(l.caducidad)}`}
+          </span>
+        ))}
+      </div>
+    )
+  }
+  // La tasa quedó congelada al vender (minuta 3).
+  const ivaTasa = (it: VentaItem) =>
+    Number(it.tasa_iva) === 0
+      ? <span className="text-emerald-700 font-medium text-sm">0%</span>
+      : <span className="text-gray-700">{(Number(it.tasa_iva) * 100).toFixed(0)}%</span>
+
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/ventas" className="inline-flex items-center gap-1.5 text-base text-gray-500 hover:text-gray-900 transition-colors mb-4">
         <ArrowLeftIcon className="w-4 h-4" />
         Ventas
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold text-gray-900">{venta.folio ?? 'Venta'}</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
+        <div className="min-w-0">
+          <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+            <h1 className="text-2xl font-semibold text-gray-900 break-all">{venta.folio ?? 'Venta'}</h1>
             <span className={`text-sm font-medium px-2.5 py-1 rounded-md ${cobranzaColor(venta.estado_cobranza)}`}>
               {cobranzaLabel(venta.estado_cobranza)}
             </span>
@@ -86,8 +109,9 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             {venta.usuario && ` · ${venta.usuario}`}
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-3xl font-semibold text-gray-900">{pesos(venta.total)}</div>
+        {/* En el teléfono el total va debajo del folio, alineado a la izquierda. */}
+        <div className="sm:text-right shrink-0">
+          <div className="text-2xl sm:text-3xl font-semibold text-gray-900">{pesos(venta.total)}</div>
           {Number(venta.saldo) > 0.005 && venta.estado !== 'cancelada' && (
             <div className="text-base text-red-600 font-medium mt-0.5">
               Saldo {pesos(venta.saldo)}
@@ -96,10 +120,10 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 sm:gap-6 items-start">
+        <div className="space-y-4 sm:space-y-6 min-w-0">
           {/* Datos de la venta */}
-          <div className={`${detalle} p-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-5`}>
+          <div className={`${detalle} p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5`}>
             {dato('Cliente', venta.cliente_id ? (
               <Link href={`/cobranza/${venta.cliente_id}`} className="text-[#003366] hover:underline font-medium">
                 {venta.cliente_empresa ?? venta.cliente_nombre ?? 'Sin nombre'}
@@ -124,7 +148,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Factura */}
-          <div className={`${detalle} p-5`}>
+          <div className={`${detalle} p-4 sm:p-5`}>
             <div className="flex items-center gap-2 mb-3">
               <DocumentTextIcon className="w-5 h-5 text-gray-400" />
               <h2 className="text-lg font-semibold text-gray-900">Factura</h2>
@@ -152,10 +176,34 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
           {/* Partidas */}
           <div className={`${detalle} overflow-hidden`}>
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Partidas</h2>
             </div>
-            <div className="overflow-x-auto">
+
+            {/* Teléfono y tablet: cada partida en un bloque; la tabla no cabe. */}
+            <div className="lg:hidden divide-y divide-gray-100">
+              {items.length === 0 && (
+                <div className="text-center py-12 text-gray-400 text-base">Sin partidas.</div>
+              )}
+              {items.map(it => (
+                <div key={it.id} className="px-4 sm:px-5 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 font-medium text-gray-900 break-words">{it.descripcion}</div>
+                    <div className="shrink-0 font-semibold text-gray-900 whitespace-nowrap">{pesos(it.total)}</div>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-600">
+                    <span className="whitespace-nowrap">{Number(it.cantidad)} × {pesos(it.precio_unitario)}</span>
+                    {Number(it.descuento_pct) > 0 && (
+                      <span className="whitespace-nowrap">Desc. {Number(it.descuento_pct)}%</span>
+                    )}
+                    <span className="whitespace-nowrap">IVA {ivaTasa(it)}</span>
+                  </div>
+                  {lotesDe(it)}
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-base min-w-[720px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -172,22 +220,11 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                     <tr><td colSpan={6} className="text-center py-20 text-gray-400 text-base">Sin partidas.</td></tr>
                   )}
                   {items.map(it => {
-                    const lotes: Lote[] = Array.isArray(it.lotes) ? it.lotes : []
                     return (
                       <tr key={it.id}>
                         <td className="px-5 py-4">
                           <div className="font-medium text-gray-900">{it.descripcion}</div>
-                          {/* De qué lote salió: es la trazabilidad que exige
-                              farmacia (minuta 23). */}
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-sm text-gray-500">
-                            {lotes.length === 0 && <span>—</span>}
-                            {lotes.map((l, j) => (
-                              <span key={j} className="font-mono">
-                                {l.lote ?? 's/l'} · {Number(l.cantidad ?? 0)} pz
-                                {l.caducidad && ` · cad. ${formatDia(l.caducidad)}`}
-                              </span>
-                            ))}
-                          </div>
+                          {lotesDe(it)}
                         </td>
                         <td className="px-5 py-4 text-right text-gray-700 whitespace-nowrap">{Number(it.cantidad)}</td>
                         <td className="px-5 py-4 text-right text-gray-700 whitespace-nowrap">{pesos(it.precio_unitario)}</td>
@@ -195,10 +232,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                           {Number(it.descuento_pct) > 0 ? `${Number(it.descuento_pct)}%` : '—'}
                         </td>
                         <td className="px-5 py-4 text-right whitespace-nowrap">
-                          {/* La tasa quedó congelada al vender (minuta 3). */}
-                          {Number(it.tasa_iva) === 0
-                            ? <span className="text-emerald-700 font-medium text-sm">0%</span>
-                            : <span className="text-gray-700">{(Number(it.tasa_iva) * 100).toFixed(0)}%</span>}
+                          {ivaTasa(it)}
                         </td>
                         <td className="px-5 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
                           {pesos(it.total)}
@@ -209,7 +243,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
                 </tbody>
               </table>
             </div>
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">
+            <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t border-gray-200">
               <div className="ml-auto max-w-xs space-y-1">
                 <div className="flex justify-between text-base text-gray-600">
                   <span>Subtotal</span>
@@ -228,7 +262,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
           {/* Pagos */}
           <div className={`${detalle} overflow-hidden`}>
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Pagos</h2>
             </div>
             {pagos.length === 0 ? (
@@ -236,10 +270,10 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             ) : (
               <div className="divide-y divide-gray-50">
                 {pagos.map(p => (
-                  <div key={p.id} className="px-5 py-4 flex items-center justify-between gap-4">
+                  <div key={p.id} className="px-4 sm:px-5 py-4 flex items-start sm:items-center justify-between gap-3 sm:gap-4">
                     <div className="min-w-0">
                       <div className="font-medium text-base text-gray-900">{pesos(p.monto)}</div>
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-gray-500 break-words">
                         {formatDia(p.fecha)} · {p.metodo}
                         {p.referencia && ` · ${p.referencia}`}
                         {p.usuario && ` · ${p.usuario}`}
@@ -254,10 +288,12 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             )}
           </div>
 
-          <div className="flex flex-wrap gap-4">
+          {/* En el teléfono son botones de ancho completo, fáciles de tocar;
+              desde sm vuelven a ser ligas. */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4">
             <Link
               href={`/movimientos?referencia=${venta.venta_id}`}
-              className="text-base font-medium text-[#003366] hover:underline"
+              className={ligaAccion}
             >
               Ver los movimientos de inventario de esta venta →
             </Link>
@@ -265,7 +301,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             <Link
               href={`/ventas/${venta.venta_id}/ticket`}
               target="_blank"
-              className="text-base font-medium text-[#003366] hover:underline"
+              className={ligaAccion}
             >
               Imprimir ticket →
             </Link>

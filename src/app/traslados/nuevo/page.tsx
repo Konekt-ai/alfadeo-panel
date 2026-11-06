@@ -42,7 +42,7 @@ export default async function NuevoTrasladoPage() {
   const explicacionEntrega = textoEntrega()
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/traslados"
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6"
@@ -50,7 +50,7 @@ export default async function NuevoTrasladoPage() {
         <ArrowLeftIcon className="w-3.5 h-3.5" /> Traslados
       </Link>
 
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Nuevo traslado</h1>
         <p className="text-base text-gray-500 mt-1">
           Un solo documento para las dos plazas: sale del origen y entra en el destino
@@ -59,7 +59,7 @@ export default async function NuevoTrasladoPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-base break-words">
           {error.message}
           {faltaMigracion(error.message) && (
             <p className="mt-2 text-sm">
@@ -71,7 +71,7 @@ export default async function NuevoTrasladoPage() {
       )}
 
       {plazas.length < 2 ? (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-5 text-base">
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 sm:p-5 text-base">
           Se necesitan al menos dos plazas activas para trasladar mercancía.
           Revisa la tabla <code className="font-mono">sucursales</code>.
         </div>

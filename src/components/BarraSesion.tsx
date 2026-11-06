@@ -43,7 +43,12 @@ export default function BarraSesion({
     })
   }
 
-  const boton = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:border-gray-300 transition-colors'
+  // En el celular el nombre completo no cabe junto al logo y la plaza: ahí
+  // van las iniciales y sin la flechita.
+  const actual = usuarios.find(u => u.nombre === usuario)
+  const corto = actual?.iniciales || usuario?.split(/\s+/).map(p => p[0]).join('').slice(0, 3).toUpperCase()
+
+  const boton = 'inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:border-gray-300 transition-colors'
 
   return (
     <div className={`flex items-center gap-2 ${pendiente ? 'opacity-50' : ''}`}>
@@ -57,7 +62,7 @@ export default function BarraSesion({
           <BuildingStorefrontIcon className="w-4 h-4 text-gray-400" />
           <span className="hidden sm:inline">{plaza?.nombre ?? 'Sin plaza'}</span>
           <span className="sm:hidden">{plaza?.clave ?? '—'}</span>
-          <ChevronDownIcon className="w-4 h-4 text-gray-400" />
+          <ChevronDownIcon className="hidden sm:block w-4 h-4 text-gray-400" />
         </button>
         {abierto === 'plaza' && (
           <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
@@ -85,8 +90,15 @@ export default function BarraSesion({
           className={`${boton} ${usuario ? 'text-gray-700' : 'text-amber-700 border-amber-300 bg-amber-50'}`}
         >
           <UserCircleIcon className={`w-4 h-4 ${usuario ? 'text-gray-400' : 'text-amber-500'}`} />
-          <span>{usuario ?? 'Elegir usuario'}</span>
-          <ChevronDownIcon className="w-4 h-4 text-gray-400" />
+          {usuario ? (
+            <>
+              <span className="sm:hidden">{corto}</span>
+              <span className="hidden sm:inline">{usuario}</span>
+            </>
+          ) : (
+            <span>Elegir<span className="hidden sm:inline"> usuario</span></span>
+          )}
+          <ChevronDownIcon className="hidden sm:block w-4 h-4 text-gray-400" />
         </button>
         {abierto === 'usuario' && (
           <div className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">

@@ -282,7 +282,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
   // ---- Falta decir quién opera (minuta 8) ------------------------------
   if (!firma) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-6 mb-6">
         <h2 className="text-lg font-semibold text-amber-900">¿Quién está en el almacén?</h2>
         <p className="text-base text-amber-800 mt-1">
           Cada entrada y salida se firma con tu nombre. Elige el tuyo para poder registrar movimientos.
@@ -339,9 +339,9 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
 
   // ---- Formulario -------------------------------------------------------
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6 mb-6">
-      <div className="flex items-start justify-between mb-5">
-        <div>
+    <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-gray-900">Registrar movimiento</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             Firmas como <span className="font-medium text-gray-700">{firma}</span>
@@ -350,7 +350,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
         <button
           type="button"
           onClick={() => setAbierto(false)}
-          className="p-2 -m-2 text-gray-400 hover:text-gray-600 transition-colors"
+          className="shrink-0 p-2.5 -m-2.5 text-gray-400 hover:text-gray-600 transition-colors"
           aria-label="Cerrar"
         >
           <XMarkIcon className="w-6 h-6" />
@@ -361,14 +361,15 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
         onSubmit={e => { e.preventDefault(); guardar() }}
         className="space-y-5"
       >
-        {/* Tipo */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Tipo. En el celular los tres botones siguen en una fila, con menos
+            relleno para que quepa la ayuda. */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           {TIPOS.map(t => (
             <button
               key={t.valor}
               type="button"
               onClick={() => cambiarTipo(t.valor)}
-              className={`px-4 py-3 rounded-lg border text-base font-medium transition-colors ${
+              className={`px-2 sm:px-4 py-3 rounded-lg border text-base font-medium transition-colors ${
                 tipo === t.valor
                   ? 'bg-[#003366] text-white border-[#003366]'
                   : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
@@ -403,7 +404,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
           {producto ? (
             <div className="flex items-start justify-between gap-3 px-4 py-3 border border-gray-200 rounded-lg bg-gray-50/60">
               <div className="min-w-0">
-                <div className="font-semibold text-gray-900">{nombreProducto(producto)}</div>
+                <div className="font-semibold text-gray-900 break-words">{nombreProducto(producto)}</div>
                 <div className="text-sm text-gray-500 mt-0.5">
                   {[producto.nombre_generico, producto.concentracion, producto.presentacion, producto.laboratorio]
                     .filter(Boolean)
@@ -421,7 +422,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
               <button
                 type="button"
                 onClick={quitarProducto}
-                className="text-sm font-medium text-[#003366] hover:underline whitespace-nowrap"
+                className="shrink-0 py-1 text-sm font-medium text-[#003366] hover:underline whitespace-nowrap"
               >
                 Cambiar
               </button>
@@ -450,7 +451,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
                         onClick={() => elegirProducto(p)}
                         className="w-full text-left px-4 py-3 hover:bg-[#003366]/5 transition-colors border-b border-gray-50 last:border-0"
                       >
-                        <div className="font-medium text-gray-900">{nombreProducto(p)}</div>
+                        <div className="font-medium text-gray-900 break-words">{nombreProducto(p)}</div>
                         <div className="text-sm text-gray-500 mt-0.5">
                           {[p.concentracion, p.presentacion, p.laboratorio].filter(Boolean).join(' · ') || '—'}
                         </div>
@@ -507,7 +508,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
                 >
                   <span className="flex items-center justify-between gap-3">
                     <span className="min-w-0">
-                      <span className="font-mono font-medium text-gray-900">{l.lote || 'Sin lote'}</span>
+                      <span className="font-mono font-medium text-gray-900 break-all">{l.lote || 'Sin lote'}</span>
                       <span className="block text-sm text-gray-500 mt-0.5">
                         {l.caducidad ? `Caduca ${formatDia(l.caducidad)}` : 'Sin caducidad'}
                         {l.ubicacion && ` · ${l.ubicacion}`}
@@ -581,7 +582,7 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
         )}
 
         {/* Cantidad, motivo y costo */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
             <label className={labelCls}>
               {tipo === 'ajuste' ? 'Existencia REAL contada' : 'Cantidad (piezas)'}
@@ -658,12 +659,12 @@ export default function NuevoMovimiento({ usuario, usuarios, sucursales, sucursa
 
         {/* El mensaje del RPC se muestra tal cual: ya viene en español. */}
         {resultado?.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base break-words">
             {resultado.error}
           </div>
         )}
         {resultado?.aviso && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-base">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-base break-words">
             {resultado.aviso}
           </div>
         )}

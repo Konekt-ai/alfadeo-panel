@@ -34,7 +34,7 @@ export default function ImportPrecios({ proveedorId }: { proveedorId: string }) 
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
+    <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 min-w-0">
       <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Importar lista de precios</h2>
 
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -43,13 +43,13 @@ export default function ImportPrecios({ proveedorId }: { proveedorId: string }) 
           type="file"
           accept=".xlsx,.xls,.csv"
           onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }}
-          className="block text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 file:cursor-pointer"
+          className="block w-full min-w-0 sm:w-auto sm:flex-1 text-sm text-gray-600 file:mr-3 file:py-2.5 sm:file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 file:cursor-pointer"
         />
         <button
           type="button"
           onClick={subir}
           disabled={!file || subiendo}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#003366] text-white text-sm font-medium rounded-lg hover:bg-[#002244] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 bg-[#003366] text-white text-sm font-medium rounded-lg hover:bg-[#002244] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
         >
           <ArrowUpTrayIcon className="w-4 h-4" />
           {subiendo ? 'Importando...' : 'Importar'}
@@ -74,7 +74,7 @@ export default function ImportPrecios({ proveedorId }: { proveedorId: string }) 
       {result?.error && (
         <div className="mt-3 flex items-start gap-2 bg-red-50 text-red-700 rounded-lg p-3 text-sm">
           <ExclamationCircleIcon className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{result.error}</span>
+          <span className="min-w-0 break-words">{result.error}</span>
         </div>
       )}
     </div>

@@ -199,7 +199,9 @@ export default function CompraForm({
   }
 
   const input = 'w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
-  const inputSm = 'w-full px-3 py-2 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]'
+  // En pantallas táctiles el renglón sube a 44px; min-w-0 para que los de
+  // fecha no revienten la columna de dos en el celular.
+  const inputSm = 'w-full min-w-0 px-3 py-2.5 lg:py-2 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]'
   const label = 'block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1.5'
   const tarjeta = 'bg-white border border-gray-200 rounded-xl'
 
@@ -226,13 +228,13 @@ export default function CompraForm({
       )}
 
       {/* Lector de facturas */}
-      <div className={`${tarjeta} p-5`}>
+      <div className={`${tarjeta} p-4 sm:p-5`}>
         <h2 className="text-lg font-semibold text-gray-900 mb-1">Leer la factura del proveedor</h2>
         <p className="text-base text-gray-500 mb-4">
           Sube el <strong>XML</strong> del CFDI y se llena todo. El PDF no sirve: el XML es
           el que trae los datos exactos.
         </p>
-        <label className="inline-flex items-center gap-2 px-5 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#003366]/40 transition-colors text-base font-medium text-gray-700">
+        <label className="flex w-full sm:inline-flex sm:w-auto justify-center items-center gap-2 px-5 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#003366]/40 transition-colors text-base font-medium text-gray-700">
           <DocumentArrowUpIcon className="w-5 h-5 text-gray-400" />
           {leyendo ? 'Leyendo…' : 'Elegir archivo XML'}
           <input
@@ -243,7 +245,7 @@ export default function CompraForm({
       </div>
 
       {/* Datos de la compra */}
-      <div className={`${tarjeta} p-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-4`}>
+      <div className={`${tarjeta} p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`}>
         <div>
           <label className={label}>Plaza que recibe</label>
           <select value={sucursalId} onChange={e => setSucursalId(e.target.value)} className={input}>
@@ -291,8 +293,8 @@ export default function CompraForm({
 
       {/* Partidas */}
       <div className={tarjeta}>
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
-          <div>
+        <div className="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-start sm:items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-gray-900">Partidas</h2>
             {sinLigar > 0 && (
               <p className="text-sm text-amber-700 mt-0.5">
@@ -302,7 +304,7 @@ export default function CompraForm({
           </div>
           <button
             onClick={() => setPartidas(prev => [...prev, vacia()])}
-            className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 lg:py-2 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
             Agregar
@@ -313,7 +315,7 @@ export default function CompraForm({
           {partidas.map((p, i) => {
             const etiqueta = ETIQUETA_MATCH[p.match]
             return (
-              <div key={i} className="p-5 space-y-3">
+              <div key={i} className="p-4 sm:p-5 space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <input
@@ -325,11 +327,11 @@ export default function CompraForm({
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className={`text-sm font-medium ${etiqueta.color}`}>{etiqueta.texto}</span>
                       {p.producto_nombre && (
-                        <span className="text-sm text-gray-500">→ {p.producto_nombre}</span>
+                        <span className="text-sm text-gray-500 min-w-0 break-words">→ {p.producto_nombre}</span>
                       )}
                       <button
                         onClick={() => { setLigando(ligando === i ? null : i); setQ(p.descripcion) }}
-                        className="inline-flex items-center gap-1 text-sm font-medium text-[#003366] hover:underline"
+                        className="inline-flex items-center gap-1 py-1.5 lg:py-0 text-sm font-medium text-[#003366] hover:underline"
                       >
                         <LinkIcon className="w-3.5 h-3.5" />
                         {p.producto_id ? 'Cambiar' : 'Ligar al catálogo'}
@@ -338,7 +340,7 @@ export default function CompraForm({
                   </div>
                   <button
                     onClick={() => setPartidas(prev => prev.filter((_, j) => j !== i))}
-                    className="text-gray-300 hover:text-red-600 transition-colors p-1"
+                    className="shrink-0 text-gray-300 hover:text-red-600 transition-colors p-3 -m-2 lg:p-1 lg:m-0"
                     aria-label="Quitar partida"
                   >
                     <TrashIcon className="w-4 h-4" />
@@ -428,7 +430,7 @@ export default function CompraForm({
           })}
         </div>
 
-        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t border-gray-200">
           <div className="ml-auto max-w-xs space-y-1">
             <div className="flex justify-between text-base text-gray-600">
               <span>Subtotal</span><span>{pesos(totales.subtotal)}</span>

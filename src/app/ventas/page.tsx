@@ -22,6 +22,17 @@ const CANALES: Record<string, string> = {
 
 const TOPE = 500
 
+// Lo que comparten la tabla (escritorio) y las tarjetas (teléfono), para que
+// las dos vistas digan exactamente lo mismo.
+const clienteTitulo = (v: VentaCobranza) => v.cliente_empresa || v.cliente_nombre || 'Público en general'
+const plazaColor = (plaza: string) =>
+  plaza === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+const formaDetalle = (v: VentaCobranza) =>
+  formaPagoLabel(v.forma_pago) +
+  (v.forma_pago === 'credito' && v.fecha_vencimiento ? ` · vence ${formatDia(v.fecha_vencimiento)}` : '')
+const atraso = (v: VentaCobranza) =>
+  Number(v.dias_vencida ?? 0) > 0 && v.estado_cobranza === 'vencida' ? `${v.dias_vencida} días de atraso` : null
+
 export default async function VentasPage({
   searchParams,
 }: {
@@ -95,6 +106,9 @@ export default async function VentasPage({
   const chipInactivo = 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
   const chipAzul = 'bg-[#003366] text-white border-[#003366]'
   const inputCls = 'px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
+  const ROTULO = 'text-sm text-gray-500 font-medium w-full sm:w-32 shrink-0'
+  const FILA_CHIPS = 'flex gap-2 flex-wrap sm:items-center'
+  const CHIPS = 'flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0 [&>*]:shrink-0'
 
   const tarjetas: { titulo: string; valor: string; detalle: string; color: string }[] = [
     { titulo: 'Vendido', valor: pesos(totalVendido), detalle: 'Total del periodo filtrado', color: 'text-gray-900' },
@@ -104,8 +118,8 @@ export default async function VentasPage({
   ]
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between gap-4 mb-8 flex-wrap">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Ventas</h1>
           <p className="text-base text-gray-500 mt-1">
@@ -128,18 +142,18 @@ export default async function VentasPage({
       )}
 
       {/* Resumen del periodo */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {tarjetas.map(t => (
-          <div key={t.titulo} className="bg-white border border-gray-200 rounded-xl p-5">
+          <div key={t.titulo} className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 min-w-0">
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t.titulo}</p>
-            <p className={`text-2xl font-semibold mt-2 ${t.color}`}>{t.valor}</p>
+            <p className={`text-xl sm:text-2xl font-semibold mt-2 break-words ${t.color}`}>{t.valor}</p>
             <p className="text-sm text-gray-400 mt-1">{t.detalle}</p>
           </div>
         ))}
       </div>
 
       {/* Buscador + filtros */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6 space-y-4">
         <form method="GET" className="flex flex-col md:flex-row gap-3 md:items-center">
           {/* Los filtros activos se conservan al buscar. */}
           {params.estado && <input type="hidden" name="estado" value={params.estado} />}
@@ -155,22 +169,29 @@ export default async function VentasPage({
               className="w-full pl-11 pr-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
             />
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="text-sm text-gray-500 font-medium">Del</label>
-            <input type="date" name="desde" defaultValue={params.desde} className={inputCls} />
-            <label className="text-sm text-gray-500 font-medium">al</label>
-            <input type="date" name="hasta" defaultValue={params.hasta} className={inputCls} />
+          {/* En el teléfono las dos fechas van lado a lado con su rótulo
+              arriba; en una sola línea no caben a 360px. */}
+          <div className="grid grid-cols-2 gap-3 md:flex md:items-center md:gap-2">
+            <label className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2 min-w-0 text-sm text-gray-500 font-medium">
+              Del
+              <input type="date" name="desde" defaultValue={params.desde} className={`${inputCls} w-full min-w-0 md:w-auto`} />
+            </label>
+            <label className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2 min-w-0 text-sm text-gray-500 font-medium">
+              al
+              <input type="date" name="hasta" defaultValue={params.hasta} className={`${inputCls} w-full min-w-0 md:w-auto`} />
+            </label>
           </div>
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 md:py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors"
           >
             Aplicar
           </button>
         </form>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Cobranza:</span>
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Cobranza:</span>
+          <div className={CHIPS}>
           {ESTADOS.map(e => {
             const activo = params.estado === e
             return (
@@ -183,10 +204,12 @@ export default async function VentasPage({
               </a>
             )
           })}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Plaza:</span>
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Plaza:</span>
+          <div className={CHIPS}>
           {SUCURSALES.map(s => {
             const activo = params.sucursal === s.clave
             return (
@@ -199,10 +222,12 @@ export default async function VentasPage({
               </a>
             )
           })}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Forma de pago:</span>
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Forma de pago:</span>
+          <div className={CHIPS}>
           {FORMAS_PAGO.map(f => {
             const activo = params.forma === f.valor
             return (
@@ -215,10 +240,12 @@ export default async function VentasPage({
               </a>
             )
           })}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Factura:</span>
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Factura:</span>
+          <div className={CHIPS}>
           <a
             href={buildUrl({ factura: params.factura === 'si' ? undefined : 'si' })}
             className={`${chipBase} ${params.factura === 'si' ? 'bg-emerald-500 text-white border-emerald-500' : chipInactivo}`}
@@ -231,6 +258,7 @@ export default async function VentasPage({
           >
             Sin factura
           </a>
+          </div>
         </div>
       </div>
 
@@ -240,7 +268,8 @@ export default async function VentasPage({
         </p>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Escritorio: la tabla completa. */}
+      <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-base min-w-[1250px]">
             <thead>
@@ -279,14 +308,14 @@ export default async function VentasPage({
                       >
                         {v.folio ?? 'Sin folio'}
                       </Link>
-                      {Number(v.dias_vencida ?? 0) > 0 && v.estado_cobranza === 'vencida' && (
-                        <div className="text-sm text-red-600 mt-0.5">{v.dias_vencida} días de atraso</div>
+                      {atraso(v) && (
+                        <div className="text-sm text-red-600 mt-0.5">{atraso(v)}</div>
                       )}
                     </td>
                     <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{formatDia(v.fecha)}</td>
                     <td className="px-5 py-4">
                       <div className="font-medium text-gray-900">
-                        {v.cliente_empresa || v.cliente_nombre || 'Público en general'}
+                        {clienteTitulo(v)}
                       </div>
                       {v.cliente_empresa && v.cliente_nombre && (
                         <div className="text-sm text-gray-500 mt-0.5">{v.cliente_nombre}</div>
@@ -295,9 +324,7 @@ export default async function VentasPage({
                     <td className="px-5 py-4">
                       {plaza ? (
                         <span
-                          className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${
-                            plaza === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
-                          }`}
+                          className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${plazaColor(plaza)}`}
                         >
                           {plaza}
                         </span>
@@ -319,10 +346,7 @@ export default async function VentasPage({
                         {cobranzaLabel(v.estado_cobranza)}
                       </span>
                       <div className="text-sm text-gray-400 mt-1 whitespace-nowrap">
-                        {formaPagoLabel(v.forma_pago)}
-                        {v.forma_pago === 'credito' && v.fecha_vencimiento
-                          ? ` · vence ${formatDia(v.fecha_vencimiento)}`
-                          : ''}
+                        {formaDetalle(v)}
                       </div>
                     </td>
                     <td className="px-5 py-4">
@@ -359,6 +383,72 @@ export default async function VentasPage({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Teléfono y tablet: una tarjeta por venta; toda la tarjeta abre el detalle. */}
+      <div className="lg:hidden">
+        {rows.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl text-center py-16 text-gray-400 text-base">
+            Sin ventas con estos filtros.
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {rows.map((v: VentaCobranza) => {
+            const saldo = Number(v.saldo ?? 0)
+            const cancelada = v.estado_cobranza === 'cancelada'
+            return (
+              <Link
+                key={v.venta_id}
+                href={`/ventas/${v.venta_id}`}
+                className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 active:bg-gray-50 transition-colors min-w-0"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[#003366] break-all">{v.folio ?? 'Sin folio'}</div>
+                    <div className="font-medium text-gray-900 mt-0.5 break-words">{clienteTitulo(v)}</div>
+                    {v.cliente_empresa && v.cliente_nombre && (
+                      <div className="text-sm text-gray-500 break-words">{v.cliente_nombre}</div>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className={`font-semibold whitespace-nowrap ${cancelada ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                      {pesos(v.total)}
+                    </div>
+                    <span
+                      className={`inline-block mt-1 text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${cobranzaColor(v.estado_cobranza)}`}
+                    >
+                      {cobranzaLabel(v.estado_cobranza)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
+                  <span className="whitespace-nowrap">{formatDia(v.fecha)}</span>
+                  {v.sucursal && (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${plazaColor(v.sucursal)}`}>
+                      {v.sucursal}
+                    </span>
+                  )}
+                  <span>· {formaDetalle(v)}</span>
+                </div>
+
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+                  {!cancelada && (
+                    <span className={`font-semibold ${saldo > 0 ? 'text-gray-900' : 'text-emerald-600'}`}>
+                      Saldo {pesos(saldo)}
+                    </span>
+                  )}
+                  {atraso(v) && <span className="text-red-600 font-medium">{atraso(v)}</span>}
+                  {v.factura_uuid ? (
+                    <span className="font-mono text-gray-500">Fact. {v.factura_uuid.slice(0, 8).toUpperCase()}…</span>
+                  ) : v.requiere_factura ? (
+                    <span className="font-medium text-amber-600">Falta timbrar</span>
+                  ) : null}
+                </div>
+              </Link>
+            )
+          })}
         </div>
       </div>
     </div>

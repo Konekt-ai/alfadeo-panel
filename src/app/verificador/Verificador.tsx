@@ -71,7 +71,12 @@ export default function Verificador({
   // Productos ya mostrados por "siguiente sin código", para no repetirlos.
   const vistos = useRef<string[]>([])
 
+  // En el mostrador el foco regresa solo al campo de escaneo, porque el
+  // lector teclea donde esté el foco. En un celular eso abre el teclado
+  // encima de la ficha cada vez que se toca la pantalla: ahí se enfoca sólo
+  // cuando la persona toca el campo.
   const enfocarEscaneo = useCallback(() => {
+    if (window.matchMedia('(pointer: coarse)').matches) return
     setTimeout(() => refEscaneo.current?.focus(), 30)
   }, [])
 
@@ -223,12 +228,12 @@ export default function Verificador({
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       {/* --- Avance ----------------------------------------------------- */}
-      <div className="flex items-center gap-4 mb-5">
-        <QrCodeIcon className="w-8 h-8 text-[#003366] shrink-0" />
+      <div className="flex items-center gap-3 sm:gap-4 mb-5">
+        <QrCodeIcon className="hidden sm:block w-8 h-8 text-[#003366] shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex items-baseline justify-between gap-x-3 flex-wrap">
             <h1 className="text-2xl font-semibold text-gray-900">Verificador</h1>
-            <span className="text-base text-gray-600 whitespace-nowrap">
+            <span className="text-sm sm:text-base text-gray-600 whitespace-nowrap">
               <strong className="text-gray-900">{avance.con}</strong> de {avance.total} con código
             </span>
           </div>
@@ -239,16 +244,17 @@ export default function Verificador({
         <button
           type="button"
           onClick={traerSiguiente}
-          className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
+          title="Siguiente sin código"
+          className="inline-flex items-center gap-2 p-2.5 sm:px-4 border border-gray-300 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
         >
           <ArrowPathIcon className="w-5 h-5 text-gray-400" />
-          Siguiente sin código
+          <span className="hidden sm:inline">Siguiente sin código</span>
         </button>
       </div>
 
       {/* --- Campo de escaneo ------------------------------------------- */}
       <div className="relative mb-4">
-        <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+        <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 sm:w-6 sm:h-6 text-gray-400" />
         <input
           ref={refEscaneo}
           value={entrada}
@@ -257,7 +263,7 @@ export default function Verificador({
           onBlur={() => { if (modo.t !== 'registro' && modo.t !== 'lista') enfocarEscaneo() }}
           placeholder="Dispara el lector sobre la caja o escribe el nombre..."
           autoComplete="off"
-          className="w-full pl-14 pr-4 py-5 text-2xl font-mono border-2 border-[#003366] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#003366]/20"
+          className="w-full pl-11 sm:pl-14 pr-4 py-4 sm:py-5 text-lg sm:text-2xl font-mono border-2 border-[#003366] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#003366]/20"
         />
       </div>
 
@@ -284,9 +290,9 @@ export default function Verificador({
 
       {/* --- Espera ------------------------------------------------------ */}
       {modo.t === 'espera' && (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-          <QrCodeIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-xl text-gray-500">Escanea una caja para empezar</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-12 text-center">
+          <QrCodeIcon className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-lg sm:text-xl text-gray-500">Escanea una caja para empezar</p>
           <p className="text-base text-gray-400 mt-2">
             Si el código ya está registrado, verás el medicamento con su precio.
             Si no, lo buscas por nombre y queda ligado.
@@ -300,8 +306,8 @@ export default function Verificador({
       {/* --- Elegir entre varios (se tecleó un nombre) -------------------- */}
       {modo.t === 'lista' && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <div className="text-lg font-semibold text-gray-900">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
+            <div className="text-lg font-semibold text-gray-900 break-words">
               {modo.productos.length} productos coinciden con “{modo.texto}”
             </div>
             <div className="text-base text-gray-500 mt-0.5">
@@ -315,12 +321,12 @@ export default function Verificador({
                 onMouseEnter={() => setSel(i)}
                 onClick={() => verFicha(p.producto_id)}
                 disabled={pendiente}
-                className={`w-full text-left px-6 py-4 transition-colors disabled:opacity-50 ${
+                className={`w-full text-left px-4 sm:px-6 py-4 transition-colors disabled:opacity-50 ${
                   i === sel ? 'bg-[#003366]/8' : 'hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-baseline justify-between gap-4">
-                  <span className="text-lg font-semibold text-gray-900">{nombreProducto(p)}</span>
+                  <span className="text-lg font-semibold text-gray-900 min-w-0 break-words">{nombreProducto(p)}</span>
                   {p.precio_base != null && (
                     <span className="text-lg font-semibold text-[#003366] shrink-0">
                       {pesos(p.precio_base)}
@@ -353,15 +359,15 @@ export default function Verificador({
       {/* --- Registro ----------------------------------------------------- */}
       {modo.t === 'registro' && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-4">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-4">
             <div className="text-lg font-semibold text-amber-900">Código no registrado</div>
-            <div className="font-mono text-2xl text-amber-800 mt-1">{modo.codigo}</div>
+            <div className="font-mono text-xl sm:text-2xl text-amber-800 mt-1 break-all">{modo.codigo}</div>
             <div className="text-base text-amber-800 mt-2">
               Busca el medicamento por su nombre y elígelo: queda ligado a este código.
             </div>
           </div>
 
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <input
               ref={refNombre}
               value={qNombre}
@@ -373,17 +379,18 @@ export default function Verificador({
               }}
               placeholder="Nombre del medicamento..."
               autoComplete="off"
-              className="w-full px-4 py-4 text-xl border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
+              className="w-full px-4 py-3.5 sm:py-4 text-lg sm:text-xl border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
             />
-            <p className="text-sm text-gray-500 mt-2">
+            {/* En el celular no hay flechas ni Escape: se toca el resultado. */}
+            <p className="hidden sm:block text-sm text-gray-500 mt-2">
               Flechas para moverte, Enter para ligar, Escape para cancelar.
             </p>
           </div>
 
           {confirmar && (
-            <div className="mx-5 mb-5 bg-amber-50 border border-amber-300 rounded-lg p-4">
+            <div className="mx-4 sm:mx-5 mb-5 bg-amber-50 border border-amber-300 rounded-lg p-4">
               <div className="text-base text-amber-900">{confirmar}</div>
-              <div className="flex gap-3 mt-3">
+              <div className="flex flex-wrap gap-3 mt-3">
                 <button
                   onClick={() => { if (porConfirmar) guardar(porConfirmar, true) }}
                   disabled={pendiente || !porConfirmar}
@@ -403,10 +410,10 @@ export default function Verificador({
 
           <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-[46vh] overflow-y-auto">
             {buscando && resultados.length === 0 && (
-              <div className="px-6 py-5 text-base text-gray-400">Buscando...</div>
+              <div className="px-4 sm:px-6 py-5 text-base text-gray-400">Buscando...</div>
             )}
             {!buscando && qNombre.trim().length >= 2 && resultados.length === 0 && (
-              <div className="px-6 py-8 text-center text-base text-gray-400">
+              <div className="px-4 sm:px-6 py-8 text-center text-base text-gray-400">
                 Ningún medicamento coincide. Prueba con el nombre comercial.
               </div>
             )}
@@ -416,13 +423,13 @@ export default function Verificador({
                 onMouseEnter={() => setSel(i)}
                 onClick={() => guardar(p.producto_id)}
                 disabled={pendiente}
-                className={`w-full text-left px-6 py-4 transition-colors ${
+                className={`w-full text-left px-4 sm:px-6 py-4 transition-colors ${
                   i === sel ? 'bg-[#003366]/8' : 'hover:bg-gray-50'
                 }`}
               >
-                <div className="flex items-baseline justify-between gap-4">
+                <div className="flex items-baseline justify-between gap-x-4 gap-y-1 flex-wrap">
                   {/* El comercial primero: es como lo busca el equipo (minuta 20). */}
-                  <span className="text-lg font-semibold text-gray-900">
+                  <span className="text-lg font-semibold text-gray-900 min-w-0 break-words">
                     {p.nombre_comercial ?? p.nombre_generico ?? p.nombre}
                   </span>
                   {p.codigo_barras && (
@@ -471,7 +478,7 @@ function FichaProducto({
       recienGuardado ? 'border-emerald-300' : 'border-gray-200'
     }`}>
       {recienGuardado && (
-        <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3 flex items-center gap-2">
+        <div className="bg-emerald-50 border-b border-emerald-200 px-4 sm:px-6 py-3 flex items-center gap-2">
           <CheckCircleIcon className="w-6 h-6 text-emerald-600" />
           <span className="text-lg font-semibold text-emerald-900">
             Guardado. Escanea la siguiente caja.
@@ -479,13 +486,13 @@ function FichaProducto({
         </div>
       )}
 
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <h2 className="text-4xl font-bold text-gray-900 leading-tight">
+            <h2 className="text-2xl sm:text-4xl font-bold text-gray-900 leading-tight break-words">
               {p.nombre_comercial ?? p.nombre_generico ?? p.nombre}
             </h2>
-            <p className="text-xl text-gray-600 mt-2">
+            <p className="text-lg sm:text-xl text-gray-600 mt-2">
               {[p.nombre_generico !== p.nombre_comercial ? p.nombre_generico : null,
                 p.concentracion, p.forma_farmaceutica, p.presentacion]
                 .filter(Boolean).join(' · ')}
@@ -494,9 +501,11 @@ function FichaProducto({
               <p className="text-lg text-gray-500 mt-1">{p.laboratorio}</p>
             )}
           </div>
-          <div className="text-right shrink-0">
+          {/* Cuando no cabe junto al nombre baja a su propio renglón, a la
+              izquierda, donde se lee primero. */}
+          <div className="sm:text-right shrink-0">
             {p.precio_base != null ? (
-              <div className="text-4xl font-bold text-[#003366]">{pesos(p.precio_base)}</div>
+              <div className="text-3xl sm:text-4xl font-bold text-[#003366]">{pesos(p.precio_base)}</div>
             ) : (
               <div className="text-xl text-amber-700 font-medium">Sin precio</div>
             )}
@@ -511,12 +520,12 @@ function FichaProducto({
         </div>
 
         {p.codigo_barras && (
-          <div className="font-mono text-lg text-gray-500 mt-4">{p.codigo_barras}</div>
+          <div className="font-mono text-lg text-gray-500 mt-4 break-all">{p.codigo_barras}</div>
         )}
       </div>
 
       {/* Existencia por plaza (minuta 28) */}
-      <div className="border-t border-gray-100 px-6 py-4 flex flex-wrap items-center gap-6">
+      <div className="border-t border-gray-100 px-4 sm:px-6 py-4 flex flex-wrap items-center gap-x-6 gap-y-3">
         <div>
           <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Existencia</div>
           <div className={`text-3xl font-bold ${
@@ -538,7 +547,7 @@ function FichaProducto({
 
       {/* Lotes: en farmacia la caducidad es lo primero que se revisa */}
       {p.lotes.length > 0 && (
-        <div className="border-t border-gray-100 px-6 py-4">
+        <div className="border-t border-gray-100 px-4 sm:px-6 py-4">
           <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
             Lotes
           </div>

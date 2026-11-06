@@ -78,9 +78,28 @@ export default async function ComprasPage({
 
   const porRecibir = rows.filter(c => c.estado === 'borrador').length
 
+  // En el celular el rótulo va arriba y los chips en una sola línea que se
+  // desliza, igual que en Inventario.
+  const ROTULO = 'text-sm text-gray-500 font-medium w-full sm:w-auto sm:mr-1 shrink-0'
+  const FILA_CHIPS = 'flex gap-2 flex-wrap sm:items-center'
+  const CHIPS = 'flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0 [&>*]:shrink-0'
+
+  // Lo que comparten la tabla y las tarjetas.
+  const datosCompra = (c: FilaCompra) => ({
+    est: estiloEstado(c.estado),
+    proveedor: c.proveedores?.nombre ?? c.emisor_nombre,
+    factura: [c.factura_serie, c.factura_folio].filter(Boolean).join('-') || null,
+  })
+
+  const chipPlaza = (clave: string) => (
+    <span className={`text-sm font-semibold px-2.5 py-1 rounded-md ${
+      clave === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+    }`}>{clave}</span>
+  )
+
   return (
-    <div className="p-8">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Compras</h1>
           <p className="text-base text-gray-500 mt-1">
@@ -89,32 +108,36 @@ export default async function ComprasPage({
           </p>
         </div>
         <Link href="/compras/nueva"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
+          className="inline-flex w-full sm:w-auto justify-center items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
           <PlusIcon className="w-5 h-5" />
           Nueva compra
         </Link>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-4">
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Estado:</span>
-          {ESTADOS.map(e => (
-            <a key={e.valor} href={buildUrl({ estado: params.estado === e.valor ? undefined : e.valor })}
-              className={chip(params.estado === e.valor)}
-              style={params.estado === e.valor ? { background: '#003366', borderColor: '#003366' } : undefined}>
-              {e.label}
-            </a>
-          ))}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6 space-y-4">
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Estado:</span>
+          <div className={CHIPS}>
+            {ESTADOS.map(e => (
+              <a key={e.valor} href={buildUrl({ estado: params.estado === e.valor ? undefined : e.valor })}
+                className={chip(params.estado === e.valor)}
+                style={params.estado === e.valor ? { background: '#003366', borderColor: '#003366' } : undefined}>
+                {e.label}
+              </a>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Plaza:</span>
-          {SUCURSALES.map(s => (
-            <a key={s.clave} href={buildUrl({ sucursal: params.sucursal === s.clave ? undefined : s.clave })}
-              className={chip(params.sucursal === s.clave)}
-              style={params.sucursal === s.clave ? { background: '#003366', borderColor: '#003366' } : undefined}>
-              {s.nombre}
-            </a>
-          ))}
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Plaza:</span>
+          <div className={CHIPS}>
+            {SUCURSALES.map(s => (
+              <a key={s.clave} href={buildUrl({ sucursal: params.sucursal === s.clave ? undefined : s.clave })}
+                className={chip(params.sucursal === s.clave)}
+                style={params.sucursal === s.clave ? { background: '#003366', borderColor: '#003366' } : undefined}>
+                {s.nombre}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -130,7 +153,8 @@ export default async function ComprasPage({
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Escritorio: tabla. */}
+      <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-base min-w-[900px]">
             <thead>
@@ -152,7 +176,7 @@ export default async function ComprasPage({
                 </td></tr>
               )}
               {rows.map(c => {
-                const est = estiloEstado(c.estado)
+                const { est, proveedor, factura } = datosCompra(c)
                 return (
                   <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
                     <td className="px-5 py-4">
@@ -162,17 +186,15 @@ export default async function ComprasPage({
                     </td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formatDia(c.fecha)}</td>
                     <td className="px-5 py-4 text-gray-900">
-                      {c.proveedores?.nombre ?? c.emisor_nombre ?? <span className="text-gray-400">—</span>}
+                      {proveedor ?? <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-5 py-4 text-gray-500 whitespace-nowrap">
-                      {[c.factura_serie, c.factura_folio].filter(Boolean).join('-') || '—'}
+                      {factura ?? '—'}
                     </td>
                     <td className="px-5 py-4">
-                      {c.sucursales?.clave ? (
-                        <span className={`text-sm font-semibold px-2.5 py-1 rounded-md ${
-                          c.sucursales.clave === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
-                        }`}>{c.sucursales.clave}</span>
-                      ) : <span className="text-gray-400">—</span>}
+                      {c.sucursales?.clave
+                        ? chipPlaza(c.sucursales.clave)
+                        : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-5 py-4 text-right text-gray-600">{c.num_partidas}</td>
                     <td className="px-5 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
@@ -188,6 +210,48 @@ export default async function ComprasPage({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Celular y tablet: una tarjeta por compra, con el total arriba a la
+          derecha. Toda la tarjeta lleva al detalle. */}
+      <div className="lg:hidden">
+        {rows.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl text-center py-16 text-gray-400 text-base">
+            Sin compras capturadas.
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {rows.map(c => {
+            const { est, proveedor, factura } = datosCompra(c)
+            return (
+              <Link key={c.id} href={`/compras/${c.id}`}
+                className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[#003366] truncate">{c.folio ?? '—'}</div>
+                    <div className="text-base text-gray-900 mt-0.5 break-words">
+                      {proveedor ?? <span className="text-gray-400">Sin proveedor</span>}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-semibold text-gray-900 whitespace-nowrap">{pesos(c.total)}</div>
+                    <span className={`inline-block mt-1 text-sm font-medium px-2.5 py-1 rounded-md whitespace-nowrap ${est.color}`}>
+                      {est.label}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-x-2 gap-y-1 flex-wrap mt-3 text-sm text-gray-500">
+                  {c.sucursales?.clave && chipPlaza(c.sucursales.clave)}
+                  <span className="whitespace-nowrap">{formatDia(c.fecha)}</span>
+                  {factura && <span className="break-all">· Factura {factura}</span>}
+                  <span className="whitespace-nowrap">
+                    · {c.num_partidas} {c.num_partidas === 1 ? 'partida' : 'partidas'}
+                  </span>
+                </div>
+              </Link>
+            )
+          })}
         </div>
       </div>
     </div>

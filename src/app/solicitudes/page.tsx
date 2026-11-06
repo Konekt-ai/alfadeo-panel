@@ -47,8 +47,8 @@ export default async function SolicitudesPage({
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="flex items-center justify-between mb-6 md:mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Solicitudes</h1>
           <p className="text-base text-gray-500 mt-1">
@@ -58,12 +58,14 @@ export default async function SolicitudesPage({
       </div>
 
       {/* Filtros */}
-      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 md:px-5 md:py-4 mb-5 space-y-3">
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 sm:px-5 sm:py-4 mb-5 space-y-3">
         <div className="flex items-center gap-1.5 text-gray-400">
           <FunnelIcon className="w-4 h-4" />
           <span className="text-sm font-semibold uppercase tracking-wider">Filtros</span>
         </div>
-        <div className="space-y-3 md:flex md:space-y-0 md:flex-wrap md:gap-y-3 md:gap-x-6">
+        {/* Hasta lg cada grupo va en su propio renglón; en escritorio se
+            acomodan uno junto al otro con su separador. */}
+        <div className="space-y-3 lg:flex lg:space-y-0 lg:flex-wrap lg:gap-y-3 lg:gap-x-6">
           <FilterGroup label="Estado">
             <Chip href="/solicitudes" active={!params.estado}>Todos</Chip>
             {ESTADOS.map(e => (
@@ -72,13 +74,13 @@ export default async function SolicitudesPage({
               </Chip>
             ))}
           </FilterGroup>
-          <div className="hidden md:block w-px bg-gray-100 self-stretch" />
+          <div className="hidden lg:block w-px bg-gray-100 self-stretch" />
           <FilterGroup label="Canal">
             <Chip href={buildUrl({ canal: undefined })} active={!params.canal}>Todos</Chip>
             <Chip href={buildUrl({ canal: 'whatsapp' })} active={params.canal === 'whatsapp'}>WhatsApp</Chip>
             <Chip href={buildUrl({ canal: 'web' })} active={params.canal === 'web'}>Web</Chip>
           </FilterGroup>
-          <div className="hidden md:block w-px bg-gray-100 self-stretch" />
+          <div className="hidden lg:block w-px bg-gray-100 self-stretch" />
           <FilterGroup label="Atención">
             <Chip href={buildUrl({ humano: params.humano === '1' ? undefined : '1' })} active={params.humano === '1'}>
               Requiere humano
@@ -93,8 +95,9 @@ export default async function SolicitudesPage({
         </div>
       )}
 
-      {/* Tabla — desktop */}
-      <div className="hidden md:block bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Tabla — escritorio */}
+      <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-base">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -161,25 +164,27 @@ export default async function SolicitudesPage({
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
-      {/* Tarjetas — móvil */}
-      <div className="md:hidden space-y-3">
+      {/* Tarjetas — celular y tablet */}
+      <div className="lg:hidden">
         {(!solicitudes || solicitudes.length === 0) && (
           <div className="text-center py-16 text-gray-400 text-base bg-white border border-gray-200 rounded-xl">
             No hay solicitudes con los filtros seleccionados.
           </div>
         )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {solicitudes?.map((s) => {
           const sol = s as unknown as Solicitud
           return (
             <Link
               key={sol.id}
               href={`/solicitudes/${sol.id}`}
-              className="block bg-white border border-gray-200 rounded-xl p-4 active:bg-gray-50"
+              className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 active:bg-gray-50 transition-colors"
             >
               <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono font-semibold text-[#003366]">#{sol.folio}</span>
                   {sol.requiere_humano && (
                     <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 shrink-0" />
@@ -192,11 +197,11 @@ export default async function SolicitudesPage({
                   <ChevronRightIcon className="w-4 h-4 text-gray-300" />
                 </div>
               </div>
-              <div className="font-medium text-gray-900 text-base">{sol.clientes?.nombre ?? '—'}</div>
+              <div className="font-medium text-gray-900 text-base break-words">{sol.clientes?.nombre ?? '—'}</div>
               {sol.clientes?.empresa && (
-                <div className="text-sm text-gray-500 mt-0.5">{sol.clientes.empresa}</div>
+                <div className="text-sm text-gray-500 mt-0.5 break-words">{sol.clientes.empresa}</div>
               )}
-              <div className="flex items-center gap-3 mt-3 flex-wrap">
+              <div className="flex items-center gap-x-3 gap-y-2 mt-3 flex-wrap">
                 <span className="text-sm text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
                   {canalLabel(sol.canal)}
                 </span>
@@ -206,21 +211,26 @@ export default async function SolicitudesPage({
                 {sol.ciudad_entrega && (
                   <span className="text-sm text-gray-500">{sol.ciudad_entrega}</span>
                 )}
-                <span className="text-sm text-gray-400 ml-auto">{formatDate(sol.created_at)}</span>
+                <span className="text-sm text-gray-400 ml-auto whitespace-nowrap">{formatDate(sol.created_at)}</span>
               </div>
             </Link>
           )
         })}
+        </div>
       </div>
     </div>
   )
 }
 
+// En el celular el rótulo va arriba y los chips en una sola línea que se
+// desliza: los ocho estados en renglones se comían la pantalla.
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-sm text-gray-500 mr-1 font-medium">{label}:</span>
-      {children}
+    <div className="flex gap-1.5 flex-wrap sm:items-center">
+      <span className="text-sm text-gray-500 mr-1 font-medium w-full sm:w-auto">{label}:</span>
+      <div className="flex gap-1.5 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0 [&>*]:shrink-0">
+        {children}
+      </div>
     </div>
   )
 }

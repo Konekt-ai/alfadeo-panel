@@ -52,7 +52,7 @@ export default async function NuevoProductoPage() {
   const error = errorPlazas ?? errorSug
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/inventario"
         className="inline-flex items-center gap-1.5 text-base text-gray-400 hover:text-gray-600 mb-6"

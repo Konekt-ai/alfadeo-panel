@@ -20,9 +20,9 @@ export default async function NuevaCompraPage() {
 
   if (!sucursal) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="text-2xl font-semibold text-gray-900">Nueva compra</h1>
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-5 mt-6 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 sm:p-5 mt-6 text-base">
           No hay ninguna plaza dada de alta; la mercancía tiene que entrar a alguna.
         </div>
       </div>
@@ -30,12 +30,12 @@ export default async function NuevaCompraPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/compras" className="inline-flex items-center gap-1.5 text-base text-gray-500 hover:text-gray-900 transition-colors mb-4">
         <ArrowLeftIcon className="w-4 h-4" />
         Compras
       </Link>
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Nueva compra</h1>
         <p className="text-base text-gray-500 mt-1">
           Sube el XML de la factura del proveedor y se llena solo, o captúrala a mano.

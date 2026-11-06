@@ -117,7 +117,21 @@ export default function POSClient({
   // deben volver a correr cada vez que cambia una cantidad.
   const carritoRef = useRef<Linea[]>([])
 
-  const enfocar = useCallback(() => inputRef.current?.focus(), [])
+  // El carrito como sección de la página, para que la barra del celular
+  // pueda bajar hasta él.
+  const seccionCarritoRef = useRef<HTMLDivElement>(null)
+
+  // En la computadora el foco regresa solo al buscador, porque la pistola
+  // teclea donde esté el foco. En un celular eso abre el teclado encima del
+  // carrito cada vez que se agrega algo: ahí se enfoca sólo cuando la
+  // persona toca el campo (igual que en el verificador).
+  const enfocar = useCallback(() => {
+    if (window.matchMedia('(pointer: coarse)').matches) return
+    inputRef.current?.focus()
+  }, [])
+
+  const verCarrito = () =>
+    seccionCarritoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   useEffect(() => { enfocar() }, [enfocar])
   useEffect(() => { carritoRef.current = carrito }, [carrito])
@@ -395,19 +409,19 @@ export default function POSClient({
 
   if (ticket) {
     return (
-      <div className="p-6 md:p-8 max-w-3xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
         <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden">
-          <div className="bg-emerald-50 px-6 py-5 flex items-center gap-3 border-b border-emerald-200">
+          <div className="bg-emerald-50 px-4 sm:px-6 py-5 flex items-center gap-3 border-b border-emerald-200">
             <CheckCircleIcon className="w-9 h-9 text-emerald-600 shrink-0" />
-            <div>
+            <div className="min-w-0">
               <div className="text-xl font-semibold text-emerald-900">Venta registrada</div>
-              <div className="text-base text-emerald-700">
+              <div className="text-base text-emerald-700 break-words">
                 Folio {ticket.folio} · {pesos(ticket.total)}
               </div>
             </div>
           </div>
 
-          <div className="px-6 py-5 space-y-4">
+          <div className="px-4 sm:px-6 py-5 space-y-4">
             {/* Al cliente hay que decirle el tiempo de entrega desde el
                 principio, sobre todo si es nuevo (minuta 6). */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
@@ -425,7 +439,7 @@ export default function POSClient({
                 {ticket.items.map((it, i) => (
                   <div key={i} className="border border-gray-200 rounded-lg px-4 py-3">
                     <div className="flex justify-between gap-3">
-                      <span className="font-medium text-gray-900">{it.descripcion}</span>
+                      <span className="font-medium text-gray-900 min-w-0 break-words">{it.descripcion}</span>
                       <span className="text-gray-700 whitespace-nowrap">
                         {it.cantidad} × {pesos(it.precio_unitario)}
                       </span>
@@ -433,7 +447,7 @@ export default function POSClient({
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                       {it.lotes.length === 0 && <span>—</span>}
                       {it.lotes.map((l, j) => (
-                        <span key={j} className="font-mono">
+                        <span key={j} className="font-mono break-all">
                           {l.lote ?? 's/l'} · {l.cantidad} pz
                           {l.caducidad && ` · cad. ${formatDia(l.caducidad)}`}
                         </span>
@@ -460,7 +474,7 @@ export default function POSClient({
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row gap-3">
+          <div className="px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row gap-3">
             <button
               onClick={nuevaVenta}
               className="flex-1 px-5 py-3 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors"
@@ -493,20 +507,24 @@ export default function POSClient({
   const inputCls = 'w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
 
   return (
-    <div className="p-4 md:p-6 xl:p-8 pb-44 xl:pb-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
+    // Abajo se deja lugar para la barra fija del celular (y el área segura del
+    // iPhone), para que nunca tape los últimos controles del carrito.
+    <div className={`p-4 sm:p-6 lg:p-8 ${
+      carrito.length > 0 ? 'pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-8' : ''
+    }`}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-gray-900">Punto de venta</h1>
           <p className="text-base text-gray-500 mt-1">
             Cobra y descuenta el inventario de {sucursal.nombre} en un solo paso.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:shrink-0">
           {/* La plaza decide de qué inventario se descuenta (minuta 28). */}
           <select
             value={sucursal.id}
             onChange={e => fijarPlaza(e.target.value)}
-            className="px-4 py-2.5 text-base border border-gray-200 rounded-lg bg-white"
+            className="w-full sm:w-auto min-w-0 px-4 py-2.5 text-base border border-gray-200 rounded-lg bg-white"
           >
             {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
           </select>
@@ -514,7 +532,7 @@ export default function POSClient({
           <select
             value={usuario ?? ''}
             onChange={e => fijarCajero(e.target.value)}
-            className={`px-4 py-2.5 text-base border rounded-lg bg-white ${
+            className={`w-full sm:w-auto min-w-0 px-4 py-2.5 text-base border rounded-lg bg-white ${
               usuario ? 'border-gray-200' : 'border-amber-300 bg-amber-50 text-amber-800'
             }`}
           >
@@ -527,13 +545,15 @@ export default function POSClient({
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-4 text-base flex items-start gap-2">
           <ExclamationTriangleIcon className="w-5 h-5 shrink-0 mt-0.5" />
-          <span>{error}</span>
+          <span className="min-w-0 break-words">{error}</span>
         </div>
       )}
 
-      <div className="grid xl:grid-cols-[1fr_380px] gap-5 xl:gap-6 items-start">
+      {/* Lado a lado desde lg; abajo de eso una sola columna: primero el
+          buscador y los resultados, luego el carrito. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] gap-5 xl:gap-6 items-start">
         {/* Buscador + resultados */}
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -559,10 +579,10 @@ export default function POSClient({
           {avisoLigado && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-base text-emerald-900 flex items-start gap-2">
               <CheckCircleIcon className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
-              <span className="flex-1">{avisoLigado}</span>
+              <span className="flex-1 min-w-0 break-words">{avisoLigado}</span>
               <button
                 onClick={() => setAvisoLigado(null)}
-                className="shrink-0 text-emerald-500 hover:text-emerald-800"
+                className="shrink-0 -m-2.5 p-2.5 text-emerald-500 hover:text-emerald-800"
                 aria-label="Cerrar aviso"
               >
                 <XMarkIcon className="w-5 h-5" />
@@ -573,12 +593,12 @@ export default function POSClient({
           {/* --- Código escaneado que no existe todavía (punto 2) --------- */}
           {codigoHuerfano && (
             <div className="bg-white border-2 border-amber-300 rounded-xl overflow-hidden">
-              <div className="bg-amber-50 border-b border-amber-200 px-5 py-4">
+              <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-5 py-4">
                 <div className="flex items-start gap-3">
                   <ExclamationTriangleIcon className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="text-lg font-semibold text-amber-900">
-                      El código <span className="font-mono">{codigoHuerfano}</span> no está
+                      El código <span className="font-mono break-all">{codigoHuerfano}</span> no está
                       registrado en ningún producto
                     </div>
                     <p className="text-base text-amber-800 mt-1">
@@ -624,17 +644,17 @@ export default function POSClient({
                     onMouseEnter={() => setSelLigar(i)}
                     onClick={() => ligar(p)}
                     disabled={ligando}
-                    className={`w-full text-left px-5 py-4 transition-colors disabled:opacity-50 ${
+                    className={`w-full text-left px-4 sm:px-5 py-4 transition-colors disabled:opacity-50 ${
                       i === selLigar ? 'bg-[#003366]/8' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-baseline justify-between gap-4">
-                      <span className="text-lg font-semibold text-gray-900">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <span className="min-w-0 break-words text-lg font-semibold text-gray-900">
                         {nombreProducto(p)}
                       </span>
                       {/* Si ya tenía otro código, se le reemplaza: hay que verlo antes. */}
                       {p.codigo_barras && (
-                        <span className="text-sm font-mono text-amber-700 shrink-0">
+                        <span className="text-sm font-mono text-amber-700 shrink-0 break-all">
                           ya tiene {p.codigo_barras}
                         </span>
                       )}
@@ -648,14 +668,14 @@ export default function POSClient({
                 ))}
               </div>
 
-              <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center gap-3">
+              <div className="px-4 sm:px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center gap-3">
                 <LinkIcon className="w-5 h-5 text-gray-400 shrink-0" />
-                <span className="text-sm text-gray-500 flex-1">
+                <span className="text-sm text-gray-500 flex-1 min-w-0">
                   {ligando ? 'Ligando el código…' : 'Queda guardado para siempre en el catálogo.'}
                 </span>
                 <button
                   onClick={cancelarLigado}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors"
+                  className="shrink-0 px-4 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors"
                 >
                   Cancelar
                 </button>
@@ -672,11 +692,11 @@ export default function POSClient({
                 <button
                   key={p.producto_id}
                   onClick={() => agregar(p)}
-                  className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-[#003366]/40 hover:shadow-sm transition-all flex items-start gap-4"
+                  className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-[#003366]/40 hover:shadow-sm transition-all flex items-start gap-3 sm:gap-4"
                 >
                   <div className="min-w-0 flex-1">
                     {/* Comercial arriba: es como lo busca el equipo (minuta 20). */}
-                    <div className="font-semibold text-lg text-gray-900 flex items-center gap-2 flex-wrap">
+                    <div className="font-semibold text-lg text-gray-900 flex items-center gap-2 flex-wrap break-words">
                       {nombreProducto({
                         nombre_comercial: p.nombre_comercial,
                         nombre_generico: p.nombre_generico,
@@ -725,8 +745,14 @@ export default function POSClient({
         </div>
 
         {/* Carrito */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden xl:sticky xl:top-4">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+        {/* La página ya no tiene un <main> con scroll propio: el carrito se
+            pega bajo el encabezado fijo (h-14) y el scroll-mt evita que la
+            barra del celular lo deje escondido debajo de él. */}
+        <div
+          ref={seccionCarritoRef}
+          className="bg-white border border-gray-200 rounded-xl overflow-hidden scroll-mt-20 lg:sticky lg:top-[4.5rem]"
+        >
+          <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-100 flex items-center gap-x-2 flex-wrap">
             <ShoppingCartIcon className="w-5 h-5 text-gray-400" />
             <span className="text-base font-semibold text-gray-900">
               Carrito {carrito.length > 0 && `· ${carrito.length}`}
@@ -738,14 +764,14 @@ export default function POSClient({
                 <button
                   onClick={() => void refrescarCarrito()}
                   disabled={refrescando}
-                  className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline disabled:opacity-50"
+                  className="ml-auto inline-flex items-center gap-1.5 py-2.5 lg:py-1 text-sm font-medium text-[#003366] hover:underline disabled:opacity-50"
                 >
                   <ArrowPathIcon className={`w-4 h-4 ${refrescando ? 'animate-spin' : ''}`} />
                   {refrescando ? 'Revisando…' : 'Revisar existencias'}
                 </button>
                 <button
                   onClick={() => setCarrito([])}
-                  className="text-sm font-medium text-gray-400 hover:text-red-600 transition-colors"
+                  className="px-2 py-2.5 lg:px-0 lg:py-1 text-sm font-medium text-gray-400 hover:text-red-600 transition-colors"
                 >
                   Vaciar
                 </button>
@@ -758,7 +784,10 @@ export default function POSClient({
             )}
           </div>
 
-          <div className="divide-y divide-gray-50 max-h-[42vh] xl:max-h-[50vh] overflow-y-auto">
+          {/* En el celular la lista crece con la página (un scroll dentro de
+              otro se pelea con el dedo); en la computadora tiene tope para que
+              el total y el botón de cobrar sigan a la vista. */}
+          <div className="divide-y divide-gray-50 lg:max-h-[50vh] lg:overflow-y-auto">
             {carrito.length === 0 && (
               <div className="py-16 text-center text-gray-400 text-base px-5">
                 Escanea o busca un producto para empezar.
@@ -769,10 +798,12 @@ export default function POSClient({
               // Avisa, no bloquea: ver el comentario de `sobregiro`.
               const excede = l.cantidad > l.existencia
               return (
-                <div key={l.producto_id} className="px-5 py-4">
+                <div key={l.producto_id} className="px-4 sm:px-5 py-4">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-base text-gray-900 truncate">{l.descripcion}</div>
+                      {/* En el celular el nombre se lee completo; en la
+                          columna angosta de la computadora se corta. */}
+                      <div className="font-medium text-base text-gray-900 break-words lg:truncate">{l.descripcion}</div>
                       <div className="text-sm text-gray-400">
                         {l.existencia} disponibles
                         {/* La mayoría de sus productos no causa IVA (minuta 3). */}
@@ -783,19 +814,22 @@ export default function POSClient({
                     </div>
                     <button
                       onClick={() => quitar(l.producto_id)}
-                      className="text-gray-300 hover:text-red-600 transition-colors p-1"
+                      className="shrink-0 -mr-2 -mt-2 w-11 h-11 lg:w-auto lg:h-auto lg:m-0 lg:p-1 flex items-center justify-center text-gray-300 hover:text-red-600 transition-colors"
                       aria-label="Quitar"
                     >
-                      <TrashIcon className="w-4 h-4" />
+                      <TrashIcon className="w-5 h-5 lg:w-4 lg:h-4" />
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-3">
+                  {/* Celular: cantidad · precio · importe en un renglón y el
+                      descuento abajo. Computadora: como siempre, cantidad ·
+                      precio · descuento y el importe en el renglón siguiente. */}
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 mt-3 lg:flex">
                     {/* Botones grandes: esto se usa con el dedo (minuta 11). */}
                     <div className="flex items-center border border-gray-200 rounded-lg">
                       <button
                         onClick={() => cambiarLinea(l.producto_id, 'cantidad', Math.max(1, l.cantidad - 1))}
-                        className="px-3 py-2.5 text-gray-500 hover:bg-gray-50 rounded-l-lg"
+                        className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 rounded-l-lg"
                         aria-label="Menos"
                       >
                         <MinusIcon className="w-4 h-4" />
@@ -803,35 +837,42 @@ export default function POSClient({
                       <input
                         type="number" min={1} value={l.cantidad}
                         onChange={e => cambiarLinea(l.producto_id, 'cantidad', Math.max(1, Number(e.target.value) || 1))}
-                        className="w-14 text-center text-base font-semibold border-x border-gray-200 py-2.5 focus:outline-none"
+                        className="w-12 xl:w-14 h-11 text-center text-base font-semibold border-x border-gray-200 focus:outline-none"
                       />
                       <button
                         onClick={() => cambiarLinea(l.producto_id, 'cantidad', l.cantidad + 1)}
-                        className="px-3 py-2.5 text-gray-500 hover:bg-gray-50 rounded-r-lg"
+                        className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 rounded-r-lg"
                         aria-label="Más"
                       >
                         <PlusIcon className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="relative flex-1">
+                    <div className="relative min-w-0 lg:flex-1">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">$</span>
                       <input
                         type="number" min={0} step="0.01" value={l.precio_unitario}
                         onChange={e => cambiarLinea(l.producto_id, 'precio_unitario', Number(e.target.value) || 0)}
-                        className="w-full pl-7 pr-2 py-2.5 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]"
+                        aria-label="Precio unitario"
+                        className="w-full h-11 pl-7 pr-2 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]"
                       />
                     </div>
-                    <div className="relative w-20">
-                      <input
-                        type="number" min={0} max={100} value={l.descuento_pct}
-                        onChange={e => cambiarLinea(l.producto_id, 'descuento_pct', Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-                        className="w-full pl-2 pr-6 py-2.5 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
-                    </div>
+                    <span className="lg:hidden text-base font-semibold text-gray-900 whitespace-nowrap text-right">
+                      {pesos(base)}
+                    </span>
+                    <label className="col-span-3 flex items-center gap-2 lg:block lg:w-20 lg:shrink-0">
+                      <span className="lg:hidden text-sm text-gray-500">Descuento</span>
+                      <span className="relative block w-24 lg:w-full">
+                        <input
+                          type="number" min={0} max={100} value={l.descuento_pct}
+                          onChange={e => cambiarLinea(l.producto_id, 'descuento_pct', Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                          className="w-full h-11 pl-2 pr-6 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#003366]"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      </span>
+                    </label>
                   </div>
 
-                  <div className="flex justify-between items-start gap-3 mt-2">
+                  <div className={`justify-between items-start gap-3 mt-2 ${excede ? 'flex' : 'hidden lg:flex'}`}>
                     {excede ? (
                       <span className="text-sm font-medium text-amber-700">
                         El sistema sólo tiene {l.existencia} en {sucursal.clave}
@@ -839,7 +880,7 @@ export default function POSClient({
                         . Si en el anaquel sí hay, véndelo.
                       </span>
                     ) : <span />}
-                    <span className="text-base font-semibold text-gray-900 whitespace-nowrap">{pesos(base)}</span>
+                    <span className="hidden lg:inline text-base font-semibold text-gray-900 whitespace-nowrap">{pesos(base)}</span>
                   </div>
                 </div>
               )
@@ -848,7 +889,7 @@ export default function POSClient({
 
           {/* El sobregiro se ve, pero el botón sigue vivo (punto 7). */}
           {sobregiro.length > 0 && (
-            <div className="px-5 py-3 bg-amber-50 border-t border-amber-200 text-sm text-amber-900">
+            <div className="px-4 sm:px-5 py-3 bg-amber-50 border-t border-amber-200 text-sm text-amber-900">
               <div className="font-semibold">
                 {sobregiro.length === 1
                   ? 'Una partida pide más de lo que el sistema tiene'
@@ -862,7 +903,7 @@ export default function POSClient({
           )}
 
           {carrito.length > 0 && (
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 space-y-1">
+            <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t border-gray-200 space-y-1">
               <div className="flex justify-between text-base text-gray-600">
                 <span>Subtotal</span><span>{pesos(totales.subtotal)}</span>
               </div>
@@ -872,9 +913,11 @@ export default function POSClient({
               <div className="flex justify-between text-xl font-semibold text-gray-900 pt-1">
                 <span>Total</span><span>{pesos(totales.total)}</span>
               </div>
+              {/* Visible en todos los tamaños: la barra del celular baja hasta
+                  aquí, y aquí es donde se cobra. */}
               <button
                 onClick={abrirCobro}
-                className="hidden xl:block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] transition-colors"
+                className="block w-full mt-3 px-5 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg hover:bg-[#002244] transition-colors"
               >
                 Cobrar {pesos(totales.total)}
               </button>
@@ -883,36 +926,52 @@ export default function POSClient({
         </div>
       </div>
 
-      {/* Barra fija del celular */}
+      {/* Barra fija del celular y la tableta (abajo de lg no hay columna del
+          carrito a la vista). Tocar el resumen baja al carrito; Cobrar abre
+          el panel directo. Queda bajo el encabezado (z-40) y el panel (z-50). */}
       {carrito.length > 0 && (
-        <div className="xl:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-lg">
-          <div className="min-w-0">
-            <div className="text-sm text-gray-500">{carrito.length} partidas</div>
-            <div className="text-xl font-semibold text-gray-900">{pesos(totales.total)}</div>
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 pb-[env(safe-area-inset-bottom)] bg-white border-t border-gray-200 shadow-lg">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <button
+              onClick={verCarrito}
+              className="min-w-0 flex-1 text-left min-h-11"
+            >
+              <div className="text-sm text-[#003366] font-medium flex items-center gap-1.5">
+                <ShoppingCartIcon className="w-4 h-4 shrink-0" />
+                <span className="truncate">
+                  {carrito.length} {carrito.length === 1 ? 'partida' : 'partidas'} · Ver carrito
+                </span>
+              </div>
+              <div className="text-xl font-semibold text-gray-900">{pesos(totales.total)}</div>
+            </button>
+            <button
+              onClick={abrirCobro}
+              className="shrink-0 px-6 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg transition-colors"
+            >
+              Cobrar
+            </button>
           </div>
-          <button
-            onClick={abrirCobro}
-            className="ml-auto px-6 py-3.5 bg-[#003366] text-white text-base font-semibold rounded-lg transition-colors"
-          >
-            Cobrar
-          </button>
         </div>
       )}
 
       {/* Panel de cobro */}
       {panelCobro && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl max-h-[94vh] overflow-y-auto">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
-              <h2 className="text-lg font-semibold text-gray-900">Cobrar {pesos(totales.total)}</h2>
-              <button onClick={() => setPanelCobro(false)} className="text-gray-400 hover:text-gray-700 p-1">
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl max-h-[90dvh] overflow-y-auto">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 sticky top-0 z-10 bg-white">
+              <h2 className="text-lg font-semibold text-gray-900 min-w-0">Cobrar {pesos(totales.total)}</h2>
+              <button
+                onClick={() => setPanelCobro(false)}
+                className="shrink-0 -mr-2 w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-700"
+                aria-label="Cerrar"
+              >
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-5 space-y-5">
+            <div className="p-4 sm:p-5 space-y-5">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-base">
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-base break-words">
                   {error}
                 </div>
               )}
@@ -924,7 +983,7 @@ export default function POSClient({
                   <div className="font-semibold mb-1">Ojo con la existencia</div>
                   <ul className="space-y-0.5">
                     {sobregiro.map(l => (
-                      <li key={l.producto_id}>
+                      <li key={l.producto_id} className="break-words">
                         {l.descripcion}: se piden {l.cantidad} y el sistema tiene {l.existencia}
                         {l.existencia_otras > 0 && ` (${l.existencia_otras} en la otra plaza)`}.
                       </li>
@@ -960,7 +1019,7 @@ export default function POSClient({
                     </div>
                     <button
                       onClick={() => { setCliente(null); setQCliente('') }}
-                      className="text-sm font-medium text-gray-400 hover:text-red-600"
+                      className="shrink-0 -my-2 -mr-2 px-2 py-3 text-sm font-medium text-gray-400 hover:text-red-600"
                     >
                       Quitar
                     </button>
@@ -1013,12 +1072,13 @@ export default function POSClient({
                 <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Forma de pago
                 </label>
-                <div className="flex flex-wrap gap-2">
+                {/* En el celular, botones parejos en dos columnas: más fáciles de atinar. */}
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   {FORMAS_PAGO.map(f => (
                     <button
                       key={f.valor}
                       onClick={() => setFormaPago(f.valor)}
-                      className={`px-4 py-2.5 rounded-lg text-base font-medium border transition-colors ${
+                      className={`px-4 py-3 sm:py-2.5 rounded-lg text-base font-medium border transition-colors ${
                         formaPago === f.valor
                           ? 'bg-[#003366] text-white border-[#003366]'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
@@ -1036,7 +1096,7 @@ export default function POSClient({
                         <button
                           key={d}
                           onClick={() => setDiasCredito(d)}
-                          className={`px-4 py-2 rounded-lg text-base font-medium border transition-colors ${
+                          className={`min-w-12 px-4 py-2.5 rounded-lg text-base font-medium border transition-colors ${
                             diasCredito === d
                               ? 'bg-[#003366] text-white border-[#003366]'
                               : 'bg-white text-gray-600 border-gray-200'
@@ -1050,7 +1110,7 @@ export default function POSClient({
                 )}
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="flex items-center gap-3 cursor-pointer min-h-11">
                 <input
                   type="checkbox"
                   checked={requiereFactura}
@@ -1074,7 +1134,7 @@ export default function POSClient({
               </div>
             </div>
 
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 sticky bottom-0">
+            <div className="px-4 sm:px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 bg-gray-50 border-t border-gray-200 sticky bottom-0">
               <button
                 onClick={cobrar}
                 disabled={cobrando}

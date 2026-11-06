@@ -75,11 +75,11 @@ export default async function InicioPage() {
   )
   const caducando = alertas.filter(a => a.tipo === 'caducidad').length
 
-  const tarjeta = 'bg-white border border-gray-200 rounded-xl p-5'
+  const tarjeta = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5'
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">
           {usuarioActual() ? `Hola, ${usuarioActual()}` : 'Panel ALFA-DEO'}
         </h1>
@@ -104,20 +104,20 @@ export default async function InicioPage() {
       )}
 
       {/* Números del día */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         <div className={tarjeta}>
           <div className="text-sm font-medium text-gray-500">Vendido hoy</div>
-          <div className="text-2xl font-semibold text-gray-900 mt-1">{pesos(vendidoHoy)}</div>
+          <div className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1 break-words">{pesos(vendidoHoy)}</div>
           <div className="text-sm text-gray-400 mt-0.5">{ventasHoy.length} ventas</div>
         </div>
         <div className={tarjeta}>
           <div className="text-sm font-medium text-gray-500">Por cobrar</div>
-          <div className="text-2xl font-semibold text-gray-900 mt-1">{pesos(porCobrar)}</div>
+          <div className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1 break-words">{pesos(porCobrar)}</div>
           <div className="text-sm text-gray-400 mt-0.5">saldo total</div>
         </div>
         <div className={tarjeta}>
           <div className="text-sm font-medium text-gray-500">Vencido</div>
-          <div className={`text-2xl font-semibold mt-1 ${vencido > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+          <div className={`text-xl sm:text-2xl font-semibold mt-1 break-words ${vencido > 0 ? 'text-red-600' : 'text-gray-900'}`}>
             {pesos(vencido)}
           </div>
           <div className="text-sm text-gray-400 mt-0.5">
@@ -126,17 +126,19 @@ export default async function InicioPage() {
         </div>
         <div className={tarjeta}>
           <div className="text-sm font-medium text-gray-500">Por caducar</div>
-          <div className={`text-2xl font-semibold mt-1 ${caducando > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+          <div className={`text-xl sm:text-2xl font-semibold mt-1 ${caducando > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
             {caducando}
           </div>
           <div className="text-sm text-gray-400 mt-0.5">lotes en 60 días</div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      {/* grid-cols-1 explícito: sin él la columna implícita crece al ancho
+          del título más largo de una alerta y la página se sale de lado. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Pendientes del día (minuta 31) */}
-        <div className="lg:col-span-2">
-          <div className="flex items-baseline justify-between mb-3">
+        <div className="lg:col-span-2 min-w-0">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
             <h2 className="text-lg font-semibold text-gray-900">Pendientes</h2>
             <span className="text-sm text-gray-400">{alertas.length} en total</span>
           </div>
@@ -161,7 +163,7 @@ export default async function InicioPage() {
                   <Icon className="w-5 h-5 shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-base truncate">{a.titulo}</div>
-                    <div className="text-sm opacity-80 mt-0.5">{a.detalle}</div>
+                    <div className="text-sm opacity-80 mt-0.5 break-words">{a.detalle}</div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-xs font-medium uppercase tracking-wide opacity-60">
@@ -180,7 +182,9 @@ export default async function InicioPage() {
           </div>
         </div>
 
-        {/* Accesos: todo desde una sola plataforma (minuta 21) */}
+        {/* Accesos: todo desde una sola plataforma (minuta 21). En el celular
+            van de dos en dos y sin la descripción, que a esa anchura sólo
+            alcanzaba a asomarse cortada. */}
         <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Ir a</h2>
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
@@ -188,14 +192,14 @@ export default async function InicioPage() {
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-4 hover:border-[#003366]/30 hover:shadow-sm transition-all"
+                className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 sm:p-4 min-h-14 hover:border-[#003366]/30 hover:shadow-sm transition-all"
               >
                 <div className="w-10 h-10 rounded-lg bg-[#003366]/8 flex items-center justify-center shrink-0">
                   <Icon className="w-5 h-5 text-[#003366]" />
                 </div>
                 <div className="min-w-0">
-                  <div className="font-semibold text-base text-gray-900">{label}</div>
-                  <div className="text-sm text-gray-500 truncate">{desc}</div>
+                  <div className="font-semibold text-sm sm:text-base leading-tight text-gray-900">{label}</div>
+                  <div className="hidden sm:block text-sm text-gray-500 truncate mt-0.5">{desc}</div>
                 </div>
               </Link>
             ))}

@@ -86,18 +86,18 @@ export default function AccionesVenta({
           {aviso.tipo === 'ok'
             ? <CheckCircleIcon className="w-5 h-5 shrink-0 mt-0.5" />
             : <ExclamationTriangleIcon className="w-5 h-5 shrink-0 mt-0.5" />}
-          <span>{aviso.texto}</span>
+          <span className="min-w-0 break-words">{aviso.texto}</span>
         </div>
       )}
 
       {cancelada ? (
-        <div className={`${tarjeta} p-5 text-base text-gray-500`}>
+        <div className={`${tarjeta} p-4 sm:p-5 text-base text-gray-500`}>
           Esta venta está cancelada. Las piezas ya regresaron a su lote.
         </div>
       ) : (
         <>
           {/* Registrar factura */}
-          <div className={`${tarjeta} p-5`}>
+          <div className={`${tarjeta} p-4 sm:p-5`}>
             {abierto === 'factura' ? (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900">Registrar factura</h3>
@@ -152,7 +152,7 @@ export default function AccionesVenta({
 
           {/* Pago */}
           {saldo > 0.005 && (
-            <div className={`${tarjeta} p-5`}>
+            <div className={`${tarjeta} p-4 sm:p-5`}>
               {abierto === 'pago' ? (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900">Registrar pago</h3>
@@ -201,7 +201,7 @@ export default function AccionesVenta({
           )}
 
           {/* Cancelar */}
-          <div className={`${tarjeta} p-5`}>
+          <div className={`${tarjeta} p-4 sm:p-5`}>
             {abierto === 'cancelar' ? (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900">Cancelar venta</h3>

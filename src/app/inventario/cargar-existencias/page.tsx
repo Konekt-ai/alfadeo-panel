@@ -12,7 +12,7 @@ export default async function CargarExistenciasPage() {
   )
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/inventario" className="inline-flex items-center gap-1.5 text-base text-gray-500 hover:text-gray-900 transition-colors mb-4">
         <ArrowLeftIcon className="w-4 h-4" />
         Inventario

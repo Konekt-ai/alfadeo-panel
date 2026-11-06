@@ -39,7 +39,7 @@ export default function RecibirCompra({
 
   if (estado === 'recibida') {
     return (
-      <div className="bg-white border border-gray-200 rounded-xl p-5 lg:sticky lg:top-4 space-y-3">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 xl:sticky xl:top-4 space-y-3">
         <div className="flex items-start gap-2 text-emerald-800">
           <CheckCircleIcon className="w-5 h-5 shrink-0 mt-0.5" />
           <span className="text-base">
@@ -58,14 +58,14 @@ export default function RecibirCompra({
 
   if (estado === 'cancelada') {
     return (
-      <div className="bg-white border border-gray-200 rounded-xl p-5 text-base text-gray-500 lg:sticky lg:top-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 text-base text-gray-500 xl:sticky xl:top-4">
         Esta compra está cancelada.
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 lg:sticky lg:top-4">
+    <div className="space-y-4 xl:sticky xl:top-4">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base flex items-start gap-2">
           <ExclamationTriangleIcon className="w-5 h-5 shrink-0 mt-0.5" />
@@ -73,7 +73,7 @@ export default function RecibirCompra({
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 space-y-3">
         <h3 className="text-lg font-semibold text-gray-900">Recibir mercancía</h3>
         <p className="text-base text-gray-600">
           Da entrada a cada partida creando su lote. A partir de ahí ya se puede vender.
@@ -84,7 +84,7 @@ export default function RecibirCompra({
             <p className="text-base text-amber-900 font-medium">
               Faltan {partidasSinLigar.length} partidas por ligar al catálogo:
             </p>
-            <ul className="mt-1.5 text-sm text-amber-800 list-disc list-inside space-y-0.5">
+            <ul className="mt-1.5 text-sm text-amber-800 list-disc list-inside space-y-0.5 break-words">
               {partidasSinLigar.slice(0, 5).map((d, i) => <li key={i}>{d}</li>)}
               {partidasSinLigar.length > 5 && <li>y {partidasSinLigar.length - 5} más</li>}
             </ul>

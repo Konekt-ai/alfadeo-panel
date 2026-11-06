@@ -387,8 +387,13 @@ export default async function InventarioPage({
   const CHIP_OFF = 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
   const CHIP_AZUL = 'bg-[#003366] text-white border-[#003366]'
   const CAMPO = 'px-4 py-3 text-base bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
-  const TARJETA = 'bg-white border border-gray-200 rounded-xl p-5 block transition-colors hover:border-gray-300'
-  const ROTULO = 'text-sm text-gray-500 font-medium w-32 shrink-0'
+  const TARJETA = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 block transition-colors hover:border-gray-300'
+  // En el celular el rótulo va arriba y los chips en una sola línea que se
+  // desliza: doce ubicaciones en renglones de a tres se comían la pantalla.
+  const ROTULO = 'text-sm text-gray-500 font-medium w-full sm:w-32 shrink-0'
+  const FILA_CHIPS = 'flex gap-2 flex-wrap sm:items-center'
+  const CHIPS = 'flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0 [&>*]:shrink-0'
+  const BOTON_SEC = 'inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors'
 
   // Las cinco tarjetas del resumen. Cada una deja puesto su propio filtro y
   // suelta los otros dos, para que no se estorben entre sí.
@@ -423,9 +428,100 @@ export default async function InventarioPage({
     },
   ]
 
+  // ---------------------------------------------------------- renglones --
+  // Lo mismo se pinta dos veces: como tabla en escritorio y como tarjeta en
+  // celular y tablet. Estas piezas son las que comparten las dos vistas.
+
+  const datosGrupo = (g: Grupo) => {
+    const r = g.cabeza
+    const minimo = Number(r.stock_minimo ?? 0)
+    // El renglón de arriba es `nombreProducto`, que cae al genérico cuando no
+    // hay comercial. Comparando contra el comercial, todo producto que sólo
+    // tiene genérico -- aquí, la mayoría -- salía con el mismo nombre
+    // repetido en los dos renglones.
+    const titulo = nombreProducto(r)
+    return {
+      r,
+      titulo,
+      detalle: [
+        r.nombre_generico && r.nombre_generico !== titulo ? r.nombre_generico : null,
+        r.forma_farmaceutica,
+        r.categoria,
+      ].filter(Boolean).join(' · '),
+      minimo,
+      bajoMinimo: minimo > 0 && g.total <= minimo,
+      // Rojo el vencido, ámbar el que está por caducar: de un vistazo se ve
+      // cuál es el inventario viejo.
+      fondo: g.peor === 'vencido'
+        ? 'bg-red-50/70 hover:bg-red-50'
+        : g.peor === 'por_caducar'
+          ? 'bg-amber-50/60 hover:bg-amber-50'
+          : 'hover:bg-gray-50/60',
+      colorTotal: g.total === 0 ? 'text-red-500' : g.total < 10 ? 'text-amber-600' : 'text-gray-900',
+    }
+  }
+
+  const codigoBarras = (r: FilaInventario) =>
+    r.codigo_barras ? (
+      <span className="font-mono text-sm text-gray-500 break-all">{r.codigo_barras}</span>
+    ) : (
+      // Sin código no hay escaneo. El enlace lleva al verificador, que es
+      // donde se le pega uno.
+      <Link href="/verificador"
+        title="Este producto no se puede escanear. Ábrelo en el verificador para registrarle su código."
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md whitespace-nowrap hover:bg-amber-200 transition-colors">
+        <QrCodeIcon className="w-4 h-4" />
+        Registrar
+      </Link>
+    )
+
+  // Un renglón por lugar donde está el producto. Que el mismo lote aparezca
+  // en dos racks es normal, no un duplicado: físicamente está en dos lugares.
+  const lugares = (g: Grupo) => (
+    <div className="space-y-1.5">
+      {g.lotes.map(l => {
+        const lv = l.estado_lote === 'vencido'
+        const lp = l.estado_lote === 'por_caducar'
+        return (
+          <div key={l.id} className="flex items-center gap-x-2 gap-y-1 flex-wrap text-sm">
+            <span className={`font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
+              l.sucursal_clave === 'MTY'
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-blue-50 text-blue-700'
+            }`}>
+              {l.sucursal_clave ?? '—'}
+            </span>
+            <span className="font-medium text-gray-700 bg-gray-100 px-2 py-0.5 rounded whitespace-nowrap">
+              {l.ubicacion ?? 'sin ubicación'}
+            </span>
+            <span className="font-mono text-gray-500 whitespace-nowrap">
+              {l.lote ?? 'sin lote'}
+            </span>
+            <span className={`inline-flex items-center gap-1 whitespace-nowrap ${
+              lv ? 'text-red-600 font-medium'
+                 : lp ? 'text-amber-600 font-medium' : 'text-gray-500'
+            }`}>
+              {(lv || lp) && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
+              {l.caducidad
+                ? new Date(l.caducidad + 'T12:00:00').toLocaleDateString('es-MX', { month: 'short', year: 'numeric' })
+                : 'sin caducidad'}
+            </span>
+            <span className="text-gray-900 font-semibold whitespace-nowrap">
+              {Number(l.existencia ?? 0).toLocaleString('es-MX')} pz
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  const sinResultados = activos.length > 0
+    ? 'Ningún producto coincide con estos filtros.'
+    : 'Sin resultados.'
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Inventario</h1>
           <p className="text-base text-gray-500 mt-1">
@@ -433,21 +529,20 @@ export default async function InventarioPage({
             {piezasEnPantalla.toLocaleString('es-MX')} piezas
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-end gap-2">
           {/* Los códigos de barras de Aspel entran por aquí; sin ellos el POS
               no puede escanear (minuta 22). */}
-          <Link href="/inventario/importar"
-            className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors">
+          <Link href="/inventario/importar" className={BOTON_SEC}>
             <ArrowUpTrayIcon className="w-5 h-5 text-gray-400" />
-            Importar de Aspel
+            <span className="sm:hidden">Aspel</span>
+            <span className="hidden sm:inline">Importar de Aspel</span>
           </Link>
-          <Link href="/inventario/cargar-existencias"
-            className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors">
+          <Link href="/inventario/cargar-existencias" className={BOTON_SEC}>
             <TableCellsIcon className="w-5 h-5 text-gray-400" />
             Cargar conteo
           </Link>
           <Link href="/inventario/nuevo"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
+            className="col-span-2 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
             <PlusIcon className="w-5 h-5" />
             Agregar producto
           </Link>
@@ -455,7 +550,9 @@ export default async function InventarioPage({
       </div>
 
       {/* Resumen. Cada tarjeta es un enlace que aplica su propio filtro. */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+      {/* Son cinco: en dos columnas la última ocupa el renglón completo en
+          vez de quedarse sola a la mitad. */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 mb-6 [&>:last-child]:col-span-2 lg:[&>:last-child]:col-span-1">
         {tarjetas.map(t => (
           <Link key={t.label} href={t.href}
             className={`${TARJETA} ${t.activa ? 'ring-2 ring-[#003366] border-[#003366]' : ''}`}>
@@ -479,7 +576,7 @@ export default async function InventarioPage({
             no tienen código de barras: en el mostrador hay que buscarlos a mano.
           </p>
           <Link href="/verificador"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors">
             <QrCodeIcon className="w-5 h-5" />
             Registrar códigos
           </Link>
@@ -487,7 +584,7 @@ export default async function InventarioPage({
       )}
 
       {/* Buscador + filtros */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6 space-y-4">
         <form method="GET" className="space-y-4">
           {/* Los filtros de chip se conservan al buscar o al cambiar un select. */}
           {f.sucursal   && <input type="hidden" name="sucursal"   value={f.sucursal} />}
@@ -523,55 +620,65 @@ export default async function InventarioPage({
           </div>
         </form>
 
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className={FILA_CHIPS}>
           <span className={ROTULO}>Plaza</span>
-          {SUCURSALES.map(s => (
-            <a key={s.clave} href={alternar('sucursal', s.clave)}
-              className={`${CHIP} ${f.sucursal === s.clave ? CHIP_AZUL : CHIP_OFF}`}>
-              {s.nombre}
-            </a>
-          ))}
+          <div className={CHIPS}>
+            {SUCURSALES.map(s => (
+              <a key={s.clave} href={alternar('sucursal', s.clave)}
+                className={`${CHIP} ${f.sucursal === s.clave ? CHIP_AZUL : CHIP_OFF}`}>
+                {s.nombre}
+              </a>
+            ))}
+          </div>
         </div>
 
         {/* "Actual" contra "viejo": esto es lo que pidió el cliente. */}
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className={FILA_CHIPS}>
           <span className={ROTULO}>Estado del lote</span>
-          {ESTADOS.map(e => (
-            <a key={e.valor} href={alternar('estado', e.valor)} title={e.ayuda}
-              className={`${CHIP} ${f.estado === e.valor ? e.activo : CHIP_OFF}`}>
-              {e.label}
-            </a>
-          ))}
+          <div className={CHIPS}>
+            {ESTADOS.map(e => (
+              <a key={e.valor} href={alternar('estado', e.valor)} title={e.ayuda}
+                className={`${CHIP} ${f.estado === e.valor ? e.activo : CHIP_OFF}`}>
+                {e.label}
+              </a>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className={FILA_CHIPS}>
           <span className={ROTULO}>Existencia</span>
-          {EXISTENCIAS.map(e => (
-            <a key={e.valor} href={alternar('existencia', e.valor)} title={e.ayuda}
-              className={`${CHIP} ${f.existencia === e.valor ? CHIP_AZUL : CHIP_OFF}`}>
-              {e.label}
-            </a>
-          ))}
+          <div className={CHIPS}>
+            {EXISTENCIAS.map(e => (
+              <a key={e.valor} href={alternar('existencia', e.valor)} title={e.ayuda}
+                className={`${CHIP} ${f.existencia === e.valor ? CHIP_AZUL : CHIP_OFF}`}>
+                {e.label}
+              </a>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className={FILA_CHIPS}>
           <span className={ROTULO}>Código de barras</span>
-          {CODIGOS.map(c => (
-            <a key={c.valor} href={alternar('codigo', c.valor)} title={c.ayuda}
-              className={`${CHIP} ${f.codigo === c.valor ? CHIP_AZUL : CHIP_OFF}`}>
-              {c.label}
-            </a>
-          ))}
+          <div className={CHIPS}>
+            {CODIGOS.map(c => (
+              <a key={c.valor} href={alternar('codigo', c.valor)} title={c.ayuda}
+                className={`${CHIP} ${f.codigo === c.valor ? CHIP_AZUL : CHIP_OFF}`}>
+                {c.label}
+              </a>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className={FILA_CHIPS}>
           <span className={ROTULO}>Ubicación</span>
-          {UBICACIONES.map(u => (
-            <a key={u} href={alternar('ubicacion', u)}
-              className={`${CHIP} ${f.ubicacion === u ? CHIP_AZUL : CHIP_OFF}`}>
-              {u}
-            </a>
-          ))}
+          <div className={CHIPS}>
+            {UBICACIONES.map(u => (
+              <a key={u} href={alternar('ubicacion', u)}
+                className={`${CHIP} ${f.ubicacion === u ? CHIP_AZUL : CHIP_OFF}`}>
+                {u}
+              </a>
+            ))}
+          </div>
         </div>
 
         {/* Lo que está puesto ahora mismo, cada uno con su tache. */}
@@ -606,7 +713,8 @@ export default async function InventarioPage({
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Escritorio: tabla. */}
+      <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-base min-w-[1100px]">
           <thead>
@@ -625,36 +733,12 @@ export default async function InventarioPage({
             {grupos.length === 0 && (
               <tr>
                 <td colSpan={8} className="text-center py-20 text-gray-400 text-base">
-                  {activos.length > 0
-                    ? 'Ningún producto coincide con estos filtros.'
-                    : 'Sin resultados.'}
+                  {sinResultados}
                 </td>
               </tr>
             )}
             {grupos.map(g => {
-              const r = g.cabeza
-              const vencido = g.peor === 'vencido'
-              const porCaducar = g.peor === 'por_caducar'
-              const minimo = Number(r.stock_minimo ?? 0)
-              const bajoMinimo = minimo > 0 && g.total <= minimo
-              // Rojo el vencido, ámbar el que está por caducar: de un vistazo
-              // se ve cuál es el inventario viejo.
-              const fondo = vencido
-                ? 'bg-red-50/70 hover:bg-red-50'
-                : porCaducar
-                  ? 'bg-amber-50/60 hover:bg-amber-50'
-                  : 'hover:bg-gray-50/60'
-              // El renglón de arriba es `nombreProducto`, que cae al genérico
-              // cuando no hay comercial. Comparando contra el comercial, todo
-              // producto que sólo tiene genérico -- aquí, la mayoría -- salía
-              // con el mismo nombre repetido en los dos renglones.
-              const titulo = nombreProducto(r)
-              const detalle = [
-                r.nombre_generico && r.nombre_generico !== titulo ? r.nombre_generico : null,
-                r.forma_farmaceutica,
-                r.categoria,
-              ].filter(Boolean).join(' · ')
-
+              const { r, titulo, detalle, minimo, bajoMinimo, fondo, colorTotal } = datosGrupo(g)
               return (
                 <tr key={g.producto_id} className={`${fondo} transition-colors group align-top`}>
                   {/* Comercial arriba, genérico abajo: así lo busca el equipo. */}
@@ -665,66 +749,12 @@ export default async function InventarioPage({
                   <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{r.concentracion ?? '—'}</td>
                   <td className="px-5 py-4 text-gray-700">{r.presentacion ?? '—'}</td>
                   <td className="px-5 py-4 text-gray-500">{r.laboratorio ?? '—'}</td>
-                  <td className="px-5 py-4">
-                    {r.codigo_barras ? (
-                      <span className="font-mono text-sm text-gray-500">{r.codigo_barras}</span>
-                    ) : (
-                      // Sin código no hay escaneo. El enlace lleva al
-                      // verificador, que es donde se le pega uno.
-                      <Link href="/verificador"
-                        title="Este producto no se puede escanear. Ábrelo en el verificador para registrarle su código."
-                        className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md whitespace-nowrap hover:bg-amber-200 transition-colors">
-                        <QrCodeIcon className="w-4 h-4" />
-                        Registrar
-                      </Link>
-                    )}
-                  </td>
-                  {/* Un renglón por lugar donde está el producto. Que el mismo
-                      lote aparezca en dos racks es normal, no un duplicado:
-                      físicamente está en dos lugares. */}
-                  <td className="px-5 py-4">
-                    <div className="space-y-1.5">
-                      {g.lotes.map(l => {
-                        const lv = l.estado_lote === 'vencido'
-                        const lp = l.estado_lote === 'por_caducar'
-                        return (
-                          <div key={l.id} className="flex items-center gap-2 flex-wrap text-sm">
-                            <span className={`font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
-                              l.sucursal_clave === 'MTY'
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-blue-50 text-blue-700'
-                            }`}>
-                              {l.sucursal_clave ?? '—'}
-                            </span>
-                            <span className="font-medium text-gray-700 bg-gray-100 px-2 py-0.5 rounded whitespace-nowrap">
-                              {l.ubicacion ?? 'sin ubicación'}
-                            </span>
-                            <span className="font-mono text-gray-500 whitespace-nowrap">
-                              {l.lote ?? 'sin lote'}
-                            </span>
-                            <span className={`inline-flex items-center gap-1 whitespace-nowrap ${
-                              lv ? 'text-red-600 font-medium'
-                                 : lp ? 'text-amber-600 font-medium' : 'text-gray-500'
-                            }`}>
-                              {(lv || lp) && <ExclamationTriangleIcon className="w-3.5 h-3.5" />}
-                              {l.caducidad
-                                ? new Date(l.caducidad + 'T12:00:00').toLocaleDateString('es-MX', { month: 'short', year: 'numeric' })
-                                : 'sin caducidad'}
-                            </span>
-                            <span className="text-gray-900 font-semibold whitespace-nowrap">
-                              {Number(l.existencia ?? 0).toLocaleString('es-MX')} pz
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </td>
+                  <td className="px-5 py-4">{codigoBarras(r)}</td>
+                  <td className="px-5 py-4">{lugares(g)}</td>
 
                   {/* El total del producto, que es lo que la gente quiere saber. */}
                   <td className="px-5 py-4 text-right">
-                    <span className={`text-xl font-semibold ${
-                      g.total === 0 ? 'text-red-500' : g.total < 10 ? 'text-amber-600' : 'text-gray-900'
-                    }`}>
+                    <span className={`text-xl font-semibold ${colorTotal}`}>
                       {g.total.toLocaleString('es-MX')}
                     </span>
                     {g.lotes.length > 1 && (
@@ -741,7 +771,7 @@ export default async function InventarioPage({
 
                   <td className="px-5 py-4">
                     <Link href={`/inventario/${r.producto_id ?? r.id}`}
-                      className="text-sm font-medium text-[#003366] md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:underline whitespace-nowrap">
+                      className="text-sm font-medium text-[#003366] opacity-0 group-hover:opacity-100 transition-opacity hover:underline whitespace-nowrap">
                       Editar
                     </Link>
                   </td>
@@ -750,6 +780,54 @@ export default async function InventarioPage({
             })}
           </tbody>
         </table>
+        </div>
+      </div>
+
+      {/* Celular y tablet: una tarjeta por producto, con el total arriba a la
+          derecha, que es lo primero que se busca. */}
+      <div className="lg:hidden">
+        {grupos.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl text-center py-16 text-gray-400 text-base">
+            {sinResultados}
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {grupos.map(g => {
+            const { r, titulo, detalle, minimo, bajoMinimo, fondo, colorTotal } = datosGrupo(g)
+            const ficha = [r.concentracion, r.presentacion, r.laboratorio].filter(Boolean).join(' · ')
+            return (
+              <div key={g.producto_id}
+                className={`bg-white border border-gray-200 rounded-xl p-4 ${fondo}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900">{titulo}</div>
+                    {detalle && <div className="text-sm text-gray-500 mt-0.5">{detalle}</div>}
+                    {ficha && <div className="text-sm text-gray-700 mt-0.5">{ficha}</div>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-2xl font-semibold leading-none ${colorTotal}`}>
+                      {g.total.toLocaleString('es-MX')}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">piezas</div>
+                  </div>
+                </div>
+
+                {bajoMinimo && (
+                  <div className="mt-2 text-xs font-medium text-amber-700">Bajo mínimo ({minimo})</div>
+                )}
+
+                <div className="mt-3 pt-3 border-t border-gray-100">{lugares(g)}</div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  {codigoBarras(r)}
+                  <Link href={`/inventario/${r.producto_id ?? r.id}`}
+                    className="shrink-0 inline-flex items-center px-3 py-2 -mr-1 text-sm font-medium text-[#003366] rounded-lg hover:bg-[#003366]/5">
+                    Editar
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

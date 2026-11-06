@@ -41,7 +41,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
         <div className="flex flex-1 min-h-0">
           <Sidebar />
-          <main className="flex-1 overflow-auto pb-20 md:pb-0">
+          {/* min-w-0: sin él, una tabla ancha estira el main y la página
+              entera se desplaza de lado en el celular. */}
+          <main className="flex-1 min-w-0">
             {children}
           </main>
         </div>

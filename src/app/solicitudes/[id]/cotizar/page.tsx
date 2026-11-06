@@ -173,12 +173,12 @@ export default async function CotizadorPage({ params }: { params: Promise<{ id: 
   const tipoCliente = sol.clientes?.tipo ?? null
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl">
-      <Link href={`/solicitudes/${id}`} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
+      <Link href={`/solicitudes/${id}`} className="inline-flex items-center gap-1.5 py-2 -my-2 text-sm text-gray-400 hover:text-gray-600 mb-6">
         <ArrowLeftIcon className="w-3.5 h-3.5" /> Solicitud #{sol.folio}
       </Link>
       <h1 className="text-xl font-semibold text-gray-900 mb-2">Nueva cotización</h1>
-      <p className="text-sm text-gray-400 mb-8">
+      <p className="text-sm text-gray-400 mb-6 sm:mb-8 break-words">
         {sol.clientes?.nombre} · {sol.clientes?.empresa}
       </p>
       <CotizadorForm

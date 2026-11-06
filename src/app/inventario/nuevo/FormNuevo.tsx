@@ -54,7 +54,7 @@ const inputCls =
   'w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
 const selectCls = inputCls + ' bg-white'
 const labelCls = 'block text-sm font-medium text-gray-600 mb-1.5'
-const cardCls = 'bg-white border border-gray-200 rounded-xl p-6'
+const cardCls = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-6'
 
 // Un EAN/GTIN trae de 8 a 14 dígitos. Lo que no cumpla eso suele ser la clave
 // interna de Aspel; se deja guardar, pero se avisa, porque la pistola del POS

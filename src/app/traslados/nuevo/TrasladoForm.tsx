@@ -28,6 +28,7 @@ import { PAQUETERIAS } from '@/lib/constantes'
 import { nombreProducto, formatDia } from '@/lib/utils'
 import type { Lote, ProductoPOS } from '@/lib/types'
 import { buscarProductosTraslado, crearTraslado } from '../acciones'
+import { useEsEscritorio } from '@/lib/useEsEscritorio'
 
 interface Plaza {
   id: string
@@ -70,6 +71,9 @@ export default function TrasladoForm({
 }: Props) {
   const router = useRouter()
 
+  // La cantidad se pinta en la tabla y en el bloque del celular; la copia que
+  // no se ve va deshabilitada para que no la valide el navegador.
+  const esEscritorio = useEsEscritorio()
   const [origenId, setOrigenId] = useState(origenInicial)
   const [destinoId, setDestinoId] = useState(destinoInicial)
   const [paqueteria, setPaqueteria] = useState(
@@ -207,7 +211,7 @@ export default function TrasladoForm({
   return (
     <form onSubmit={guardar} className="space-y-6 max-w-5xl">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base break-words">
           {error}
           {FALTA_BASE.test(error) && (
             <p className="mt-2 text-sm">
@@ -219,7 +223,7 @@ export default function TrasladoForm({
       )}
 
       {/* Ruta */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">Ruta</h2>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-end">
           <div>
@@ -273,9 +277,9 @@ export default function TrasladoForm({
       </div>
 
       {/* Envío */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">Envío</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-500 mb-1.5">Paquetería</label>
             <select value={paqueteria} onChange={e => setPaqueteria(e.target.value)} className={selectCls}>
@@ -312,14 +316,14 @@ export default function TrasladoForm({
 
       {/* Partidas */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="p-5 md:p-6 border-b border-gray-100">
+        <div className="p-4 sm:p-6 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Partidas</h2>
           <p className="text-sm text-gray-500 mt-1">
             La existencia y los lotes son los de {origen ? origen.nombre : 'la plaza de origen'}.
           </p>
 
           <div className="mt-4 flex gap-2">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 value={q}
@@ -339,7 +343,7 @@ export default function TrasladoForm({
               type="button"
               onClick={() => void buscar()}
               disabled={buscando || q.trim().length < 2}
-              className="px-5 py-3 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors disabled:opacity-40"
+              className="shrink-0 px-4 sm:px-5 py-3 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors disabled:opacity-40"
             >
               {buscando ? 'Buscando...' : 'Buscar'}
             </button>
@@ -361,10 +365,10 @@ export default function TrasladoForm({
                     <button
                       type="button"
                       onClick={() => agregar(p)}
-                      className="w-full text-left px-4 py-4 hover:bg-[#003366]/5 transition-colors flex items-start gap-4"
+                      className="w-full text-left px-4 py-4 hover:bg-[#003366]/5 transition-colors flex items-start gap-3 sm:gap-4"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-gray-900">{nombreProducto(p)}</div>
+                        <div className="font-semibold text-gray-900 break-words">{nombreProducto(p)}</div>
                         <div className="text-sm text-gray-500 mt-0.5">
                           {[p.concentracion, p.presentacion, p.laboratorio].filter(Boolean).join(' · ') || '—'}
                         </div>
@@ -373,7 +377,7 @@ export default function TrasladoForm({
                             {lotes.map((l, i) => (
                               <span
                                 key={`${p.producto_id}-${l.lote ?? 'sinlote'}-${i}`}
-                                className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md"
+                                className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md break-all"
                               >
                                 {l.lote ?? 'sin lote'} · cad. {formatDia(l.caducidad)} · {Number(l.existencia ?? 0)} pz
                               </span>
@@ -408,7 +412,9 @@ export default function TrasladoForm({
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Escritorio: tabla. En celular y tablet cada partida es un bloque
+            con el nombre arriba y la cantidad abajo (ver más abajo). */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[720px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -449,6 +455,7 @@ export default function TrasladoForm({
                         value={p.cantidad}
                         onChange={e => cambiarCantidad(p.key, Number(e.target.value))}
                         className="w-32 px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
+                        disabled={esEscritorio === false}
                         required
                       />
                       {excede && (
@@ -473,8 +480,69 @@ export default function TrasladoForm({
           </table>
         </div>
 
+        <div className="lg:hidden divide-y divide-gray-100">
+          {partidas.length === 0 && (
+            <p className="text-center py-12 px-4 text-gray-400 text-base">
+              Busca un producto arriba para agregarlo al traslado.
+            </p>
+          )}
+          {partidas.map(p => {
+            const excede = Number(p.cantidad) > p.existencia
+            return (
+              <div key={p.key} className="px-4 sm:px-6 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">{p.descripcion}</div>
+                    {p.lotes.length > 0 && (
+                      <div className="text-sm text-gray-500 mt-1 break-words">
+                        Saldrá por FEFO: {p.lotes[0].lote ?? 'sin lote'} (cad. {formatDia(p.lotes[0].caducidad)})
+                        {p.lotes.length > 1 && ` y ${p.lotes.length - 1} lote(s) más si hace falta`}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => quitar(p.key)}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-2 py-2 -mr-2 -mt-1 text-sm font-medium text-gray-400 hover:text-red-600 transition-colors"
+                  >
+                    <TrashIcon className="w-4 h-4" /> Quitar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-500 mb-1.5">Existencia en origen</label>
+                    <div className="px-4 py-3 text-base text-gray-700 bg-gray-50 border border-gray-100 rounded-lg">
+                      {p.existencia}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-500 mb-1.5">Cantidad a mandar</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      inputMode="decimal"
+                      value={p.cantidad}
+                      onChange={e => cambiarCantidad(p.key, Number(e.target.value))}
+                      className={inputCls}
+                      disabled={esEscritorio === true}
+                      required
+                    />
+                  </div>
+                </div>
+                {excede && (
+                  <p className="text-sm text-amber-700 mt-1.5">
+                    Excede la existencia de {origen?.clave ?? 'origen'}: el envío se va a rechazar.
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
         {partidas.length > 0 && (
-          <div className="border-t border-gray-100 px-5 py-4 text-base text-gray-600">
+          <div className="border-t border-gray-100 px-4 sm:px-5 py-4 text-base text-gray-600">
             {partidas.length} {partidas.length === 1 ? 'partida' : 'partidas'} ·{' '}
             {piezas.toLocaleString('es-MX')} piezas
           </div>
@@ -482,7 +550,7 @@ export default function TrasladoForm({
       </div>
 
       {/* Notas y cierre */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6 space-y-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 space-y-5">
         <div>
           <label className="block text-sm font-medium text-gray-500 mb-1.5">Notas</label>
           <textarea

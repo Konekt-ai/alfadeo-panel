@@ -61,7 +61,7 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
 
   if (compraRes.error && faltaMigracion(compraRes.error.message)) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-base">
           {compraRes.error.message}
           <p className="mt-2 text-sm">
@@ -87,17 +87,26 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
     </div>
   )
 
+  // Lo que comparten la tabla y los bloques del celular.
+  const importe = (it: CompraItem) => pesos(Number(it.cantidad) * Number(it.costo_unitario))
+  const estadoLiga = (it: CompraItem) => it.producto_id
+    ? <span className="text-gray-500 break-all">
+        Ligado al catálogo
+        {it.codigo_barras && ` · ${it.codigo_barras}`}
+      </span>
+    : <span className="text-red-600 font-medium">Sin ligar al catálogo</span>
+
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/compras" className="inline-flex items-center gap-1.5 text-base text-gray-500 hover:text-gray-900 transition-colors mb-4">
         <ArrowLeftIcon className="w-4 h-4" />
         Compras
       </Link>
 
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6 sm:mb-8">
+        <div className="min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold text-gray-900">{compra.folio ?? 'Compra'}</h1>
+            <h1 className="text-2xl font-semibold text-gray-900 break-all">{compra.folio ?? 'Compra'}</h1>
             <span className={`text-sm font-medium px-2.5 py-1 rounded-md ${est.color}`}>{est.label}</span>
             {compra.sucursales?.clave && (
               <span className={`text-sm font-semibold px-2.5 py-1 rounded-md ${
@@ -110,12 +119,14 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
             {compra.usuario && ` · capturó ${compra.usuario}`}
           </p>
         </div>
-        <div className="text-3xl font-semibold text-gray-900">{pesos(compra.total)}</div>
+        <div className="text-2xl sm:text-3xl font-semibold text-gray-900 whitespace-nowrap">{pesos(compra.total)}</div>
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
-        <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-xl p-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {/* La columna de "Recibir" se pone al lado hasta xl: en 1024 con el menú
+          lateral, 340px fijos dejaban la tabla de partidas en ~370px. */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        <div className="space-y-6 min-w-0">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 [&>*]:min-w-0 break-words">
             {dato('Proveedor', compra.proveedores?.nombre ?? compra.emisor_nombre ?? <span className="text-gray-400">—</span>)}
             {dato('RFC', compra.emisor_rfc ?? <span className="text-gray-400">—</span>)}
             {dato('Factura', [compra.factura_serie, compra.factura_folio].filter(Boolean).join('-') || <span className="text-gray-400">—</span>)}
@@ -131,10 +142,40 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Partidas</h2>
             </div>
-            <div className="overflow-x-auto">
+
+            {/* Celular y tablet: un bloque por partida. */}
+            <div className="lg:hidden divide-y divide-gray-100">
+              {items.length === 0 && (
+                <p className="text-center py-16 text-gray-400 text-base">Sin partidas.</p>
+              )}
+              {items.map(it => (
+                <div key={it.id} className={`px-4 sm:px-5 py-4 ${!it.producto_id ? 'bg-red-50/40' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 break-words">{it.descripcion}</div>
+                      <div className="text-sm mt-0.5">{estadoLiga(it)}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-medium text-gray-900 whitespace-nowrap">{importe(it)}</div>
+                      <div className="text-sm text-gray-500 whitespace-nowrap">
+                        {Number(it.cantidad)} × {pesos(it.costo_unitario)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-gray-500">
+                    <span>Lote <span className="font-mono text-gray-700 break-all">{it.lote ?? '—'}</span></span>
+                    <span className="whitespace-nowrap">Cad. {it.caducidad ? formatDia(it.caducidad) : '—'}</span>
+                    <span>Ubic. {it.ubicacion ?? '—'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Escritorio: tabla. */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-base min-w-[860px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -155,14 +196,7 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
                     <tr key={it.id} className={!it.producto_id ? 'bg-red-50/40' : undefined}>
                       <td className="px-5 py-4">
                         <div className="font-medium text-gray-900">{it.descripcion}</div>
-                        <div className="text-sm mt-0.5">
-                          {it.producto_id
-                            ? <span className="text-gray-500">
-                                Ligado al catálogo
-                                {it.codigo_barras && ` · ${it.codigo_barras}`}
-                              </span>
-                            : <span className="text-red-600 font-medium">Sin ligar al catálogo</span>}
-                        </div>
+                        <div className="text-sm mt-0.5">{estadoLiga(it)}</div>
                       </td>
                       <td className="px-5 py-4 font-mono text-sm text-gray-600">{it.lote ?? '—'}</td>
                       <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
@@ -172,14 +206,14 @@ export default async function CompraPage({ params }: { params: Promise<{ id: str
                       <td className="px-5 py-4 text-right text-gray-700">{Number(it.cantidad)}</td>
                       <td className="px-5 py-4 text-right text-gray-700 whitespace-nowrap">{pesos(it.costo_unitario)}</td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900 whitespace-nowrap">
-                        {pesos(Number(it.cantidad) * Number(it.costo_unitario))}
+                        {importe(it)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-200">
+            <div className="px-4 sm:px-5 py-4 bg-gray-50 border-t border-gray-200">
               <div className="ml-auto max-w-xs space-y-1">
                 <div className="flex justify-between text-base text-gray-600">
                   <span>Subtotal</span><span>{pesos(compra.subtotal)}</span>

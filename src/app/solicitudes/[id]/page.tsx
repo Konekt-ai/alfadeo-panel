@@ -51,17 +51,17 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
   if (error || !sol) return notFound()
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
       {/* Back */}
-      <Link href="/solicitudes" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5">
+      <Link href="/solicitudes" className="inline-flex items-center gap-1.5 py-2 -my-2 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5">
         <ArrowLeftIcon className="w-3.5 h-3.5" />
         Solicitudes
       </Link>
 
       {/* Header */}
-      <div className="mb-6 md:mb-8">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl font-semibold text-gray-900">Solicitud <span className="font-mono">#{sol.folio}</span></h1>
               {sol.requiere_humano && (
@@ -83,7 +83,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
             {sol.estado !== 'cancelada' && sol.estado !== 'facturada' && (
               <Link
                 href={`/solicitudes/${sol.id}/cotizar`}
-                className="px-4 py-1.5 bg-[#003366] text-white text-xs font-medium rounded-lg hover:bg-[#002244] transition-colors"
+                className="w-full sm:w-auto inline-flex justify-center px-4 py-2.5 sm:py-1.5 bg-[#003366] text-white text-sm sm:text-xs font-medium rounded-lg hover:bg-[#002244] transition-colors"
               >
                 {(cotizaciones ?? []).length > 0 ? 'Nueva cotización' : 'Cotizar'}
               </Link>
@@ -94,7 +94,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 mb-5">
         {/* Cliente */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 min-w-0">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">Datos del cliente</h2>
           <dl className="space-y-4">
             <Field label="Nombre" value={sol.clientes?.nombre} />
@@ -128,9 +128,9 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
                 {sol.clientes?.correo ? (
                   <a
                     href={`mailto:${sol.clientes.correo}`}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline transition-colors"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline transition-colors break-all"
                   >
-                    <EnvelopeIcon className="w-3.5 h-3.5" />
+                    <EnvelopeIcon className="w-3.5 h-3.5 shrink-0" />
                     {sol.clientes.correo}
                   </a>
                 ) : <span className="text-gray-300 text-sm">—</span>}
@@ -140,7 +140,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
         </div>
 
         {/* Solicitud */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 min-w-0">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">Datos de la solicitud</h2>
           <dl className="space-y-4">
             <Field label="Canal de origen" value={canalLabel(sol.canal)} />
@@ -157,7 +157,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
             {sol.notas && (
               <div>
                 <dt className="text-xs text-gray-400 mb-1.5">Notas internas</dt>
-                <dd className="text-sm text-gray-700 bg-amber-50 border border-amber-100 rounded-lg p-3 leading-relaxed">
+                <dd className="text-sm text-gray-700 bg-amber-50 border border-amber-100 rounded-lg p-3 leading-relaxed break-words">
                   {sol.notas}
                 </dd>
               </div>
@@ -168,7 +168,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
 
       {/* Items */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 md:px-6 py-4 border-b border-gray-100">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Productos solicitados
             <span className="ml-2 text-gray-300 font-normal normal-case tracking-normal">
@@ -177,10 +177,34 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
           </h2>
         </div>
         {!sol.solicitud_items?.length ? (
-          <div className="px-6 py-10 text-center text-gray-300 text-sm">Sin items registrados.</div>
+          <div className="px-4 sm:px-6 py-10 text-center text-gray-300 text-sm">Sin items registrados.</div>
         ) : (
-          <div className="overflow-x-auto overscroll-x-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <table className="w-full text-sm" style={{ minWidth: '480px' }}>
+          <>
+          {/* Celular y tablet: un bloque por producto, con la cantidad a la derecha. */}
+          <div className="lg:hidden divide-y divide-gray-50">
+            {sol.solicitud_items.map((item, i) => (
+              <div key={item.id} className="px-4 sm:px-6 py-4 flex items-start gap-3">
+                <span className="text-gray-300 font-mono text-xs pt-0.5 shrink-0">{String(i + 1).padStart(2, '0')}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-sm text-gray-900 font-medium min-w-0 break-words">{item.descripcion_libre ?? '—'}</div>
+                    <div className="text-sm text-gray-600 shrink-0 text-right whitespace-nowrap">
+                      {cantidadItem(item)}
+                    </div>
+                  </div>
+                  {(item.categoria || item.marca || item.presentacion) && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {[item.categoria, item.marca, item.presentacion].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  {item.nota && <div className="text-sm text-gray-500 mt-1 break-words">{item.nota}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50/60 border-b border-gray-100">
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-10">#</th>
@@ -202,7 +226,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
                     )}
                   </td>
                   <td className="px-6 py-4 text-gray-600">
-                    {item.cantidad != null ? `${item.cantidad}${item.unidad ? ` ${item.unidad}` : ''}` : '—'}
+                    {cantidadItem(item)}
                   </td>
                   <td className="px-6 py-4 text-gray-400">{item.nota ?? '—'}</td>
                 </tr>
@@ -210,18 +234,47 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
             </tbody>
           </table>
           </div>
+          </>
         )}
       </div>
 
       {/* Cotizaciones */}
       {(cotizaciones ?? []).length > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mt-5">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center gap-2">
             <DocumentTextIcon className="w-4 h-4 text-gray-300" />
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Cotizaciones</h2>
           </div>
-          <div className="overflow-x-auto overscroll-x-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <table className="w-full text-sm" style={{ minWidth: '520px' }}>
+
+          {/* Celular y tablet: folio y total arriba, el PDF como botón aparte. */}
+          <div className="lg:hidden divide-y divide-gray-50">
+            {(cotizaciones ?? []).map((cot: any) => (
+              <div key={cot.id} className="px-4 sm:px-6 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-mono text-sm text-gray-700 break-all">{cot.folio}</div>
+                    <div className="text-xs text-gray-400 mt-1">{formatDate(cot.created_at)}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-medium text-gray-900 tabular-nums">{totalCotizacion(cot.total)}</div>
+                    <span className="inline-flex mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                      {cot.estado}
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={`/api/cotizaciones/${cot.id}/pdf`}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 -ml-3 text-sm font-medium text-[#003366] rounded-lg hover:bg-[#003366]/5 transition-colors"
+                >
+                  <ArrowDownTrayIcon className="w-4 h-4" />
+                  Descargar PDF
+                </a>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50/60 border-b border-gray-100">
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Folio</th>
@@ -241,7 +294,7 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
                     </span>
                   </td>
                   <td className="px-6 py-4 font-medium text-gray-900 tabular-nums">
-                    {Number(cot.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                    {totalCotizacion(cot.total)}
                   </td>
                   <td className="px-6 py-4 text-gray-400 text-xs">{formatDate(cot.created_at)}</td>
                   <td className="px-6 py-4 text-right">
@@ -264,11 +317,20 @@ export default async function DetalleSolicitudPage({ params }: { params: Promise
   )
 }
 
+// Compartidos por la tabla de escritorio y los bloques del celular.
+function cantidadItem(item: { cantidad?: number | null; unidad?: string | null }) {
+  return item.cantidad != null ? `${item.cantidad}${item.unidad ? ` ${item.unidad}` : ''}` : '—'
+}
+
+function totalCotizacion(total: unknown) {
+  return Number(total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+}
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-gray-400 mb-0.5">{label}</dt>
-      <dd className="text-sm font-medium text-gray-800">{value ?? <span className="text-gray-300 font-normal">—</span>}</dd>
+      <dd className="text-sm font-medium text-gray-800 break-words">{value ?? <span className="text-gray-300 font-normal">—</span>}</dd>
     </div>
   )
 }

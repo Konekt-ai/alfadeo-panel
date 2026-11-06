@@ -67,7 +67,7 @@ export default async function EstadoCuentaPage({
 
   if (error) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <Link href="/cobranza" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6">
           <ArrowLeftIcon className="w-3.5 h-3.5" /> Cobranza
         </Link>
@@ -132,17 +132,63 @@ export default async function EstadoCuentaPage({
     'w-full px-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]'
   const labelCls = 'block text-sm font-medium text-gray-500 mb-1.5'
   const thCls = 'text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide'
+  const statCls = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 min-w-0'
+  const statRotulo = 'text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wide'
+  // Montos grandes en media pantalla de celular: se parten antes que empujar la página.
+  const statMonto = 'text-xl sm:text-2xl font-semibold mt-2 [overflow-wrap:anywhere]'
+  // En el celular los botones de arriba se reparten el ancho; en sm+ vuelven a su tamaño.
+  const botonCabecera = 'grow basis-36 sm:grow-0 sm:basis-auto justify-center min-h-11'
+
+  // Color del saldo de una venta: rojo si ya venció, gris si ya se pagó.
+  const colorSaldoVenta = (v: VentaCobranza) => {
+    const s = Number(v.saldo ?? 0)
+    return v.estado_cobranza === 'vencida' && s > CENTAVO
+      ? 'text-red-600'
+      : s > CENTAVO ? 'text-gray-900' : 'text-gray-400'
+  }
+
+  // Días de atraso, igual en la tabla y en los renglones del celular.
+  const chipAtraso = (v: VentaCobranza) => {
+    const dias = Number(v.dias_vencida ?? 0)
+    if (v.estado_cobranza !== 'vencida' || dias <= 0) return null
+    return (
+      <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${
+        dias > 15 ? 'bg-red-100 text-red-800' : dias > 5 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+      }`}>
+        <ClockIcon className="w-4 h-4" />
+        {dias} días
+      </span>
+    )
+  }
+
+  const chipEstado = (v: VentaCobranza) => (
+    <span className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${cobranzaColor(v.estado_cobranza)}`}>
+      {cobranzaLabel(v.estado_cobranza)}
+    </span>
+  )
+
+  const formaPago = (v: VentaCobranza) => (
+    <>
+      {formaPagoLabel(v.forma_pago)}
+      {Number(v.dias_credito ?? 0) > 0 && (
+        <span className="text-sm text-gray-400"> · {v.dias_credito} días</span>
+      )}
+    </>
+  )
+
+  const ventaDePago = (p: Pago) =>
+    p.venta_id ? (folioPorVenta.get(p.venta_id) ?? 'Sin folio') : 'Sin venta'
 
   return (
-    <div className="p-8">
-      <Link href="/cobranza" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <Link href="/cobranza" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-4 sm:mb-6 py-1">
         <ArrowLeftIcon className="w-3.5 h-3.5" /> Cobranza
       </Link>
 
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{nombreCliente}</h1>
-          <p className="text-base text-gray-500 mt-1">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6 sm:mb-8">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold text-gray-900 break-words">{nombreCliente}</h1>
+          <p className="text-base text-gray-500 mt-1 break-words">
             {tipoClienteLabel(ec.tipo)}
             {ec.empresa && ec.nombre && ec.nombre !== ec.empresa ? ` · ${ec.nombre}` : ''}
             {ec.correo ? ` · ${ec.correo}` : ''}
@@ -156,7 +202,7 @@ export default async function EstadoCuentaPage({
           )}
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {ec.portal_pagos_url && (
             // Clientes tipo IMSS: hay que entrar al portal a checar si ya
             // liberaron el pago (minuta 35).
@@ -164,7 +210,7 @@ export default async function EstadoCuentaPage({
               href={ec.portal_pagos_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 bg-white text-[#003366] text-base font-medium rounded-lg hover:border-gray-300 transition-colors"
+              className={`${botonCabecera} inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 bg-white text-[#003366] text-base font-medium rounded-lg hover:border-gray-300 transition-colors`}
             >
               <ArrowTopRightOnSquareIcon className="w-5 h-5" />
               Abrir portal
@@ -176,16 +222,19 @@ export default async function EstadoCuentaPage({
               href={`https://wa.me/${wa}?text=${encodeURIComponent(mensajeWa)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 border border-emerald-200 bg-emerald-50 text-emerald-800 text-base font-medium rounded-lg hover:bg-emerald-100 transition-colors"
+              className={`${botonCabecera} inline-flex items-center gap-2 px-5 py-2.5 border border-emerald-200 bg-emerald-50 text-emerald-800 text-base font-medium rounded-lg hover:bg-emerald-100 transition-colors`}
             >
               <ChatBubbleLeftRightIcon className="w-5 h-5" />
               WhatsApp
             </a>
           )}
+          {/* En el celular "Registrar pago" va primero y a todo lo ancho: es
+              a lo que se entra a esta pantalla. */}
           <RegistrarPago
             ventas={conSaldo}
             clienteNombre={nombreCliente}
             ventaId={query.venta}
+            className="order-first sm:order-none basis-full sm:basis-auto justify-center min-h-11"
           />
         </div>
       </div>
@@ -204,20 +253,20 @@ export default async function EstadoCuentaPage({
       )}
 
       {/* Resumen de saldos */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Facturado</div>
-          <div className="text-2xl font-semibold text-gray-900 mt-2">{pesos(Number(ec.facturado ?? 0))}</div>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className={statCls}>
+          <div className={statRotulo}>Facturado</div>
+          <div className={`${statMonto} text-gray-900`}>{pesos(Number(ec.facturado ?? 0))}</div>
           <div className="text-sm text-gray-500 mt-1">{Number(ec.ventas ?? 0)} ventas cerradas</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Pagado</div>
-          <div className="text-2xl font-semibold text-gray-900 mt-2">{pesos(Number(ec.pagado ?? 0))}</div>
+        <div className={statCls}>
+          <div className={statRotulo}>Pagado</div>
+          <div className={`${statMonto} text-gray-900`}>{pesos(Number(ec.pagado ?? 0))}</div>
           <div className="text-sm text-gray-500 mt-1">Último pago: {formatDia(ec.ultimo_pago)}</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Saldo</div>
-          <div className={`text-2xl font-semibold mt-2 ${saldo > CENTAVO ? 'text-gray-900' : 'text-gray-400'}`}>
+        <div className={statCls}>
+          <div className={statRotulo}>Saldo</div>
+          <div className={`${statMonto} ${saldo > CENTAVO ? 'text-gray-900' : 'text-gray-400'}`}>
             {pesos(saldo)}
           </div>
           <div className="text-sm text-gray-500 mt-1">
@@ -226,9 +275,9 @@ export default async function EstadoCuentaPage({
               : `Límite ${pesos(limite)} · disponible ${pesos(disponible ?? 0)}`}
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Vencido</div>
-          <div className={`text-2xl font-semibold mt-2 ${vencido > CENTAVO ? 'text-red-600' : 'text-gray-400'}`}>
+        <div className={statCls}>
+          <div className={statRotulo}>Vencido</div>
+          <div className={`${statMonto} ${vencido > CENTAVO ? 'text-red-600' : 'text-gray-400'}`}>
             {pesos(vencido)}
           </div>
           <div className="text-sm text-gray-500 mt-1">
@@ -240,7 +289,7 @@ export default async function EstadoCuentaPage({
 
       {/* Condiciones de crédito: son los datos que hacen funcionar el resto
           —vencimientos, alertas y el portal que hay que revisar— (minuta 34, 35, 36). */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-8">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6 sm:mb-8">
         <h2 className="text-lg font-semibold text-gray-900">Condiciones de crédito</h2>
         <p className="text-base text-gray-500 mt-1 mb-5">
           De aquí sale la fecha de vencimiento de cada venta y, con ella, las alertas de cobranza.
@@ -249,7 +298,7 @@ export default async function EstadoCuentaPage({
         <form action={actualizarCredito} className="space-y-5">
           <input type="hidden" name="cliente_id" value={ec.cliente_id} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls} htmlFor="dias_credito">Días de crédito</label>
               <select
@@ -279,7 +328,7 @@ export default async function EstadoCuentaPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls} htmlFor="portal_pagos_url">Portal de pagos</label>
               <input
@@ -315,7 +364,7 @@ export default async function EstadoCuentaPage({
 
           <button
             type="submit"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors"
           >
             Guardar condiciones
           </button>
@@ -326,8 +375,8 @@ export default async function EstadoCuentaPage({
       <h2 className="text-lg font-semibold text-gray-900 mb-3">
         Ventas <span className="text-base font-normal text-gray-500">{ventas.length}</span>
       </h2>
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-8">
-        <div className="overflow-x-auto">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6 sm:mb-8">
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[1200px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -353,7 +402,6 @@ export default async function EstadoCuentaPage({
               )}
               {ventas.map(v => {
                 const saldoVenta = Number(v.saldo ?? 0)
-                const dias = Number(v.dias_vencida ?? 0)
                 const pagable = v.estado !== 'cancelada' && saldoVenta > CENTAVO
                 // La venta que venía marcada desde una alerta se resalta.
                 const resaltada = query.venta === v.venta_id
@@ -371,38 +419,16 @@ export default async function EstadoCuentaPage({
                       )}
                     </td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formatDia(v.fecha)}</td>
-                    <td className="px-5 py-4">
-                      <span className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${cobranzaColor(v.estado_cobranza)}`}>
-                        {cobranzaLabel(v.estado_cobranza)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
-                      {formaPagoLabel(v.forma_pago)}
-                      {Number(v.dias_credito ?? 0) > 0 && (
-                        <span className="text-sm text-gray-400"> · {v.dias_credito} días</span>
-                      )}
-                    </td>
+                    <td className="px-5 py-4">{chipEstado(v)}</td>
+                    <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formaPago(v)}</td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formatDia(v.fecha_vencimiento)}</td>
                     <td className="px-5 py-4 whitespace-nowrap">
-                      {v.estado_cobranza === 'vencida' && dias > 0 ? (
-                        <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1 rounded-md ${
-                          dias > 15 ? 'bg-red-100 text-red-800' : dias > 5 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          <ClockIcon className="w-4 h-4" />
-                          {dias} días
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
+                      {chipAtraso(v) ?? <span className="text-sm text-gray-400">—</span>}
                     </td>
                     <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{pesos(Number(v.total ?? 0))}</td>
                     <td className="px-5 py-4 text-gray-700 whitespace-nowrap">{pesos(Number(v.pagado ?? 0))}</td>
                     <td className="px-5 py-4 whitespace-nowrap">
-                      <span className={`font-semibold ${
-                        v.estado_cobranza === 'vencida' && saldoVenta > CENTAVO
-                          ? 'text-red-600'
-                          : saldoVenta > CENTAVO ? 'text-gray-900' : 'text-gray-400'
-                      }`}>
+                      <span className={`font-semibold ${colorSaldoVenta(v)}`}>
                         {pesos(saldoVenta)}
                       </span>
                     </td>
@@ -423,6 +449,78 @@ export default async function EstadoCuentaPage({
             </tbody>
           </table>
         </div>
+
+        {/* Celular y tableta: un renglón apilado por venta, con el saldo a la
+            derecha y el botón de pago a todo lo ancho. */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {ventas.length === 0 && (
+            <div className="text-center py-12 px-4 text-gray-400 text-base">
+              Este cliente todavía no tiene ventas registradas.
+            </div>
+          )}
+          {ventas.map(v => {
+            const saldoVenta = Number(v.saldo ?? 0)
+            const pagable = v.estado !== 'cancelada' && saldoVenta > CENTAVO
+            const resaltada = query.venta === v.venta_id
+            return (
+              <div key={v.venta_id} className={`px-4 py-4 ${resaltada ? 'bg-amber-50' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 break-all">{v.folio ?? 'Sin folio'}</div>
+                    <div className="text-sm text-gray-500 mt-0.5">{formatDia(v.fecha)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-xl font-semibold leading-none ${colorSaldoVenta(v)}`}>
+                      {pesos(saldoVenta)}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">saldo</div>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {chipEstado(v)}
+                  {chipAtraso(v)}
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Total</dt>
+                    <dd className="text-gray-700">{pesos(Number(v.total ?? 0))}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Pagado</dt>
+                    <dd className="text-gray-700">{pesos(Number(v.pagado ?? 0))}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Vencimiento</dt>
+                    <dd className="text-gray-700">{formatDia(v.fecha_vencimiento)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Forma de pago</dt>
+                    <dd className="text-gray-700">{formaPago(v)}</dd>
+                  </div>
+                </dl>
+
+                {v.factura_uuid && (
+                  <div className="text-xs text-gray-400 font-mono mt-2 break-all">
+                    UUID {v.factura_uuid}
+                  </div>
+                )}
+
+                {pagable && (
+                  <RegistrarPago
+                    ventas={conSaldo}
+                    clienteNombre={nombreCliente}
+                    ventaId={v.venta_id}
+                    variante="secundario"
+                    etiqueta="Registrar pago"
+                    className="mt-3 w-full sm:w-auto min-h-11"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Historial de pagos */}
@@ -430,7 +528,7 @@ export default async function EstadoCuentaPage({
         Pagos recibidos <span className="text-base font-normal text-gray-500">{pagos.length}</span>
       </h2>
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -457,9 +555,7 @@ export default async function EstadoCuentaPage({
                     {formatDia(p.fecha)}
                     <div className="text-xs text-gray-400 mt-0.5">Capturado {formatDate(p.created_at)}</div>
                   </td>
-                  <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
-                    {p.venta_id ? (folioPorVenta.get(p.venta_id) ?? 'Sin folio') : 'Sin venta'}
-                  </td>
+                  <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{ventaDePago(p)}</td>
                   <td className="px-5 py-4 font-semibold text-emerald-700 whitespace-nowrap">
                     {pesos(Number(p.monto ?? 0))}
                   </td>
@@ -476,6 +572,45 @@ export default async function EstadoCuentaPage({
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Celular y tableta: renglones apilados, el monto a la derecha. */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {pagos.length === 0 && (
+            <div className="text-center py-12 px-4 text-gray-400 text-base">
+              Todavía no se registra ningún pago de este cliente.
+            </div>
+          )}
+          {pagos.map(p => (
+            <div key={p.id} className="px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900">{formatDia(p.fecha)}</div>
+                  <div className="text-sm text-gray-500 mt-0.5 break-all">
+                    {p.venta_id ? `Venta ${ventaDePago(p)}` : ventaDePago(p)}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xl font-semibold leading-none text-emerald-700">
+                    {pesos(Number(p.monto ?? 0))}
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">
+                    {metodoLabel(p.metodo)}
+                    {p.origen !== 'manual' && <span className="text-xs text-gray-400"> · {p.origen}</span>}
+                  </div>
+                </div>
+              </div>
+              {p.referencia && (
+                <div className="mt-2 text-sm text-gray-500">
+                  Ref. <span className="font-mono break-all">{p.referencia}</span>
+                </div>
+              )}
+              {p.notas && <div className="mt-1 text-sm text-gray-600 break-words">{p.notas}</div>}
+              <div className="mt-1 text-xs text-gray-400">
+                Capturado {formatDate(p.created_at)}{p.usuario ? ` por ${p.usuario}` : ''}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

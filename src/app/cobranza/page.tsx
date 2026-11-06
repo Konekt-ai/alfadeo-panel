@@ -63,6 +63,22 @@ function mensajeCobranza(
   )
 }
 
+// Días de atraso con el mismo color en la tabla y en las tarjetas del celular.
+function chipAtraso(dias: number) {
+  if (dias <= 0) return <span className="text-sm text-gray-400">—</span>
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${
+      dias > 15 ? 'bg-red-100 text-red-800' : dias > 5 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+    }`}>
+      <ClockIcon className="w-4 h-4" />
+      {dias} días
+    </span>
+  )
+}
+
+const plazoCredito = (c: EstadoCuentaCliente) =>
+  Number(c.dias_credito ?? 0) > 0 ? `${c.dias_credito} días` : 'Contado'
+
 export default async function CobranzaPage({
   searchParams,
 }: {
@@ -175,9 +191,55 @@ export default async function CobranzaPage({
       activo ? 'text-white' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
     }`
 
+  // Lo que la tabla y las tarjetas del celular sacan de cada cliente, en un
+  // solo lugar para que las dos vistas no se desfasen.
+  const datosCliente = (c: EstadoCuentaCliente) => {
+    const saldo = Number(c.saldo ?? 0)
+    const ventasCliente = ventasPorCliente.get(c.cliente_id) ?? []
+    const masVieja = ventasCliente[0]
+    const wa = numeroWa(c.telefono_wa)
+    const nombreCliente = c.empresa ?? c.nombre ?? 'Cliente sin nombre'
+    return {
+      saldo,
+      vencido: Number(c.saldo_vencido ?? 0),
+      dias: Number(c.dias_mas_atrasado ?? 0),
+      ventasCliente,
+      nombreCliente,
+      externa: etiquetaFacturaExterna(c.factura_externa),
+      // Seguimiento administrativo por WhatsApp (minuta 31).
+      hrefWa: wa
+        ? `https://wa.me/${wa}?text=${encodeURIComponent(
+            mensajeCobranza(
+              c.nombre ?? nombreCliente,
+              masVieja?.folio ?? null,
+              saldo,
+              masVieja?.dias_vencida ?? 0,
+            )
+          )}`
+        : null,
+    }
+  }
+
+  // Minuta 36: hay clientes que facturan por su cuenta.
+  const etiquetaExterna = (externa: string) => (
+    <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-1 rounded-md">
+      <DocumentTextIcon className="w-3.5 h-3.5" />
+      {externa}
+    </span>
+  )
+
+  const ROTULO = 'text-sm text-gray-500 font-medium w-full sm:w-auto sm:mr-1 shrink-0'
+  const CHIPS = 'flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-1 px-1 pb-1 sm:pb-0 [&>*]:shrink-0'
+  const STAT = 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5 min-w-0'
+  const STAT_ROTULO = 'flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wide'
+  // Los montos de millones no caben en media pantalla de celular: se dejan
+  // partir antes que empujar la página de lado.
+  const STAT_MONTO = 'text-xl sm:text-2xl lg:text-3xl font-semibold mt-2 [overflow-wrap:anywhere]'
+  const BOTON_SEC = 'grow basis-32 sm:grow-0 sm:basis-auto inline-flex items-center justify-center gap-2 px-4 min-h-11 border border-gray-300 bg-white text-base font-medium rounded-lg hover:border-gray-400 transition-colors'
+
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Cobranza</h1>
         <p className="text-base text-gray-500 mt-1">
           Quién debe, cuánto y desde cuándo. Los pagos se capturan aquí: el SAT y el
@@ -198,20 +260,20 @@ export default async function CobranzaPage({
       )}
 
       {/* Tarjetas de arriba: el número que se pregunta en la junta */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            <BanknotesIcon className="w-4 h-4" /> Total por cobrar
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className={STAT}>
+          <div className={STAT_ROTULO}>
+            <BanknotesIcon className="w-4 h-4 shrink-0" /> Total por cobrar
           </div>
-          <div className="text-3xl font-semibold text-gray-900 mt-2">{pesos(totalPorCobrar)}</div>
+          <div className={`${STAT_MONTO} text-gray-900`}>{pesos(totalPorCobrar)}</div>
           <div className="text-sm text-gray-500 mt-1">Saldo de todas las ventas cerradas</div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            <ExclamationTriangleIcon className="w-4 h-4" /> Vencido
+        <div className={STAT}>
+          <div className={STAT_ROTULO}>
+            <ExclamationTriangleIcon className="w-4 h-4 shrink-0" /> Vencido
           </div>
-          <div className={`text-3xl font-semibold mt-2 ${totalVencido > CENTAVO ? 'text-red-600' : 'text-gray-900'}`}>
+          <div className={`${STAT_MONTO} ${totalVencido > CENTAVO ? 'text-red-600' : 'text-gray-900'}`}>
             {pesos(totalVencido)}
           </div>
           <div className="text-sm text-gray-500 mt-1">
@@ -221,35 +283,35 @@ export default async function CobranzaPage({
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            <UserIcon className="w-4 h-4" /> Clientes con adeudo
+        <div className={STAT}>
+          <div className={STAT_ROTULO}>
+            <UserIcon className="w-4 h-4 shrink-0" /> Clientes con adeudo
           </div>
-          <div className="text-3xl font-semibold text-gray-900 mt-2">{conAdeudo.length}</div>
+          <div className={`${STAT_MONTO} text-gray-900`}>{conAdeudo.length}</div>
           <div className="text-sm text-gray-500 mt-1">
             {conAdeudo.filter(c => Number(c.saldo_vencido ?? 0) > CENTAVO).length} con saldo vencido
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            <ClockIcon className="w-4 h-4" /> Más días de atraso
+        <div className={STAT}>
+          <div className={STAT_ROTULO}>
+            <ClockIcon className="w-4 h-4 shrink-0" /> Más días de atraso
           </div>
           {masAtrasado ? (
             <>
-              <div className="text-3xl font-semibold text-red-600 mt-2">
+              <div className={`${STAT_MONTO} text-red-600`}>
                 {Number(masAtrasado.dias_mas_atrasado ?? 0)} días
               </div>
               <Link
                 href={`/cobranza/${masAtrasado.cliente_id}`}
-                className="text-sm text-[#003366] font-medium mt-1 inline-block hover:underline"
+                className="text-sm text-[#003366] font-medium mt-1 inline-block hover:underline break-words"
               >
                 {masAtrasado.empresa ?? masAtrasado.nombre ?? 'Cliente sin nombre'}
               </Link>
             </>
           ) : (
             <>
-              <div className="text-3xl font-semibold text-gray-900 mt-2">0 días</div>
+              <div className={`${STAT_MONTO} text-gray-900`}>0 días</div>
               <div className="text-sm text-gray-500 mt-1">Nadie está vencido</div>
             </>
           )}
@@ -257,8 +319,8 @@ export default async function CobranzaPage({
       </div>
 
       {/* Alertas de cobranza (minuta 31 y 32) */}
-      <div className="mb-8">
-        <div className="flex items-baseline justify-between mb-3">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4 mb-3">
           <h2 className="text-lg font-semibold text-gray-900">
             Alertas de cobranza
             {alertasOrdenadas.length > 0 && (
@@ -273,7 +335,7 @@ export default async function CobranzaPage({
         </div>
 
         {alertasOrdenadas.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-400 text-base">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 text-center text-gray-400 text-base">
             No hay facturas vencidas ni por vencer. Todo al corriente.
           </div>
         ) : (
@@ -300,13 +362,13 @@ export default async function CobranzaPage({
                         {a.tipo === 'cobranza_vencida' ? 'Vencida' : 'Por vencer'} · prioridad {ETIQUETA_PRIORIDAD[a.prioridad]}
                       </span>
                     </div>
-                    <div className="text-base text-gray-600 mt-0.5">{a.detalle}</div>
+                    <div className="text-base text-gray-600 mt-0.5 break-words">{a.detalle}</div>
                     <div className="text-sm text-gray-400 mt-1">
                       {a.sucursal ? `${a.sucursal} · ` : ''}{formatDia(a.fecha)}
                     </div>
                   </div>
                   {a.monto !== null && (
-                    <div className="text-base font-semibold text-gray-900 whitespace-nowrap">
+                    <div className="text-base font-semibold text-gray-900 whitespace-nowrap shrink-0">
                       {pesos(Number(a.monto))}
                     </div>
                   )}
@@ -318,7 +380,7 @@ export default async function CobranzaPage({
       </div>
 
       {/* Buscador + filtros */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 mb-6 space-y-4">
         <form method="GET">
           {/* Los filtros activos se conservan al buscar. */}
           {params.adeudo && <input type="hidden" name="adeudo" value={params.adeudo} />}
@@ -334,30 +396,32 @@ export default async function CobranzaPage({
           </div>
         </form>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-sm text-gray-500 mr-1 font-medium">Mostrar:</span>
-          <a
-            href={buildUrl({ adeudo: soloAdeudo ? '0' : undefined })}
-            className={chip(soloAdeudo)}
-            style={soloAdeudo ? { background: '#003366', borderColor: '#003366' } : undefined}
-          >
-            Sólo con adeudo
-          </a>
-          <a
-            href={buildUrl({ vencidos: soloVencidos ? undefined : '1' })}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              soloVencidos
-                ? 'bg-red-500 text-white border-red-500'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            Sólo vencidos
-          </a>
+        <div className="flex gap-2 flex-wrap sm:items-center">
+          <span className={ROTULO}>Mostrar:</span>
+          <div className={CHIPS}>
+            <a
+              href={buildUrl({ adeudo: soloAdeudo ? '0' : undefined })}
+              className={chip(soloAdeudo)}
+              style={soloAdeudo ? { background: '#003366', borderColor: '#003366' } : undefined}
+            >
+              Sólo con adeudo
+            </a>
+            <a
+              href={buildUrl({ vencidos: soloVencidos ? undefined : '1' })}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                soloVencidos
+                  ? 'bg-red-500 text-white border-red-500'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              Sólo vencidos
+            </a>
+          </div>
         </div>
       </div>
 
-      {/* Tabla por cliente (minuta 30) */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Tabla por cliente (minuta 30). Debajo de lg se ve como tarjetas. */}
+      <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-base min-w-[1300px]">
             <thead>
@@ -384,14 +448,7 @@ export default async function CobranzaPage({
                 </tr>
               )}
               {filas.map(c => {
-                const saldo = Number(c.saldo ?? 0)
-                const vencido = Number(c.saldo_vencido ?? 0)
-                const dias = Number(c.dias_mas_atrasado ?? 0)
-                const ventasCliente = ventasPorCliente.get(c.cliente_id) ?? []
-                const masVieja = ventasCliente[0]
-                const wa = numeroWa(c.telefono_wa)
-                const nombreCliente = c.empresa ?? c.nombre ?? 'Cliente sin nombre'
-                const externa = etiquetaFacturaExterna(c.factura_externa)
+                const { saldo, vencido, dias, ventasCliente, nombreCliente, externa, hrefWa } = datosCliente(c)
                 return (
                   <tr key={c.cliente_id} className="hover:bg-gray-50/60 transition-colors">
                     <td className="px-5 py-4">
@@ -406,17 +463,12 @@ export default async function CobranzaPage({
                       )}
                       {externa && (
                         // Minuta 36: hay clientes que facturan por su cuenta.
-                        <div className="mt-1.5">
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-1 rounded-md">
-                            <DocumentTextIcon className="w-3.5 h-3.5" />
-                            {externa}
-                          </span>
-                        </div>
+                        <div className="mt-1.5">{etiquetaExterna(externa)}</div>
                       )}
                     </td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{tipoClienteLabel(c.tipo)}</td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
-                      {Number(c.dias_credito ?? 0) > 0 ? `${c.dias_credito} días` : 'Contado'}
+                      {plazoCredito(c)}
                       {c.limite_credito != null && (
                         <div className="text-sm text-gray-400">Límite {pesos(Number(c.limite_credito))}</div>
                       )}
@@ -434,18 +486,7 @@ export default async function CobranzaPage({
                       </span>
                     </td>
                     <td className="px-5 py-4 text-gray-700">{Number(c.facturas_vencidas ?? 0)}</td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {dias > 0 ? (
-                        <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1 rounded-md ${
-                          dias > 15 ? 'bg-red-100 text-red-800' : dias > 5 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          <ClockIcon className="w-4 h-4" />
-                          {dias} días
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap">{chipAtraso(dias)}</td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formatDia(c.ultimo_pago)}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3 flex-wrap">
@@ -468,17 +509,10 @@ export default async function CobranzaPage({
                             Abrir portal
                           </a>
                         )}
-                        {wa && (
+                        {hrefWa && (
                           // Seguimiento administrativo por WhatsApp (minuta 31).
                           <a
-                            href={`https://wa.me/${wa}?text=${encodeURIComponent(
-                              mensajeCobranza(
-                                c.nombre ?? nombreCliente,
-                                masVieja?.folio ?? null,
-                                saldo,
-                                masVieja?.dias_vencida ?? 0,
-                              )
-                            )}`}
+                            href={hrefWa}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline"
@@ -500,6 +534,120 @@ export default async function CobranzaPage({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Celular y tableta: una tarjeta por cliente. Lleva botones adentro
+          (pago, WhatsApp, portal), así que el enlace al estado de cuenta va
+          en el nombre y en su propio botón, no en toda la tarjeta. */}
+      <div className="lg:hidden">
+        {filas.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl text-center py-16 text-gray-400 text-base">
+            Sin resultados.
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {filas.map(c => {
+            const { saldo, vencido, dias, ventasCliente, nombreCliente, externa, hrefWa } = datosCliente(c)
+            return (
+              <div key={c.cliente_id} className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/cobranza/${c.cliente_id}`}
+                      className="font-semibold text-gray-900 hover:text-[#003366] hover:underline break-words"
+                    >
+                      {nombreCliente}
+                    </Link>
+                    {c.empresa && c.nombre && c.nombre !== c.empresa && (
+                      <div className="text-sm text-gray-500 mt-0.5 break-words">{c.nombre}</div>
+                    )}
+                    <div className="text-sm text-gray-500 mt-0.5">{tipoClienteLabel(c.tipo)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-xl font-semibold leading-none ${saldo > CENTAVO ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {pesos(saldo)}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">saldo</div>
+                    {vencido > CENTAVO && (
+                      <div className="text-sm font-semibold text-red-600 mt-1.5">
+                        {pesos(vencido)} vencido
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {dias > 0 && chipAtraso(dias)}
+                  {Number(c.facturas_vencidas ?? 0) > 0 && (
+                    <span className="text-sm font-medium text-red-700">
+                      {Number(c.facturas_vencidas)} {Number(c.facturas_vencidas) === 1 ? 'factura vencida' : 'facturas vencidas'}
+                    </span>
+                  )}
+                  {externa && etiquetaExterna(externa)}
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Crédito</dt>
+                    <dd className="text-gray-700">{plazoCredito(c)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Límite</dt>
+                    <dd className="text-gray-700">
+                      {c.limite_credito != null ? pesos(Number(c.limite_credito)) : 'Sin límite'}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Última venta</dt>
+                    <dd className="text-gray-700">{formatDia(c.ultima_venta)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-gray-400">Último pago</dt>
+                    <dd className="text-gray-700">{formatDia(c.ultimo_pago)}</dd>
+                  </div>
+                </dl>
+
+                {/* mt-auto: en tableta (dos columnas) los botones quedan alineados abajo. */}
+                <div className="mt-auto pt-3">
+                  <div className="pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                    <RegistrarPago
+                      ventas={ventasCliente}
+                      clienteNombre={nombreCliente}
+                      etiqueta="Registrar pago"
+                      className="basis-full justify-center min-h-11"
+                    />
+                    {hrefWa && (
+                      <a
+                        href={hrefWa}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${BOTON_SEC} text-emerald-700`}
+                      >
+                        <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                        WhatsApp
+                      </a>
+                    )}
+                    {c.portal_pagos_url && (
+                      // Clientes tipo IMSS: revisar si ya liberaron el pago (minuta 35).
+                      <a
+                        href={c.portal_pagos_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${BOTON_SEC} text-[#003366]`}
+                      >
+                        <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                        Portal
+                      </a>
+                    )}
+                    <Link href={`/cobranza/${c.cliente_id}`} className={`${BOTON_SEC} text-gray-700`}>
+                      Estado de cuenta
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

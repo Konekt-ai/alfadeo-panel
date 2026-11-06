@@ -229,6 +229,29 @@ export default function EditarProducto({
   const totalPiezas = lotes.reduce((s, l) => s + Number(l.existencia ?? 0), 0)
   const activo = producto.activo !== false
 
+  // Lo comparten la tabla de escritorio y los bloques del celular.
+  const chipPlaza = (l: LoteFila) =>
+    l.sucursal_clave ? (
+      <span className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${
+        l.sucursal_clave === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+      }`}>
+        {l.sucursal_clave}
+      </span>
+    ) : (
+      <span className="text-sm text-red-500">Sin plaza</span>
+    )
+
+  const celdaDiferencia = (dif: number | null) =>
+    dif === null ? (
+      <span className="text-gray-300">—</span>
+    ) : dif === 0 ? (
+      <span className="text-gray-500">Cuadra</span>
+    ) : (
+      <span className={`font-semibold ${dif > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+        {dif > 0 ? '+' : '−'}{piezas(Math.abs(dif))}
+      </span>
+    )
+
   const botonIva = (act: boolean) =>
     `flex-1 px-4 py-3 rounded-lg border text-base font-medium transition-colors ${
       act
@@ -277,7 +300,7 @@ export default function EditarProducto({
       )}
 
       {/* ---- Datos del catálogo ------------------------------------------ */}
-      <div className={cardCls + ' p-6'}>
+      <div className={cardCls + ' p-4 sm:p-6'}>
         <h2 className="text-base font-semibold text-gray-900 mb-5">Datos del producto</h2>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -457,7 +480,7 @@ export default function EditarProducto({
             {activo ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
             {activo ? 'Desactivar producto' : 'Reactivar producto'}
           </button>
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-gray-400 w-full sm:w-auto">
             Desactivar lo saca del mostrador sin borrar su historial.
           </span>
         </div>
@@ -465,7 +488,7 @@ export default function EditarProducto({
 
       {/* ---- Lotes y conteo ---------------------------------------------- */}
       <div className={cardCls + ' overflow-hidden'}>
-        <div className="px-6 py-5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="px-4 sm:px-6 py-5 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Cantidades por lote</h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -473,12 +496,12 @@ export default function EditarProducto({
               asentada en el kardex; si cuadra, no registra nada.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <label className="text-sm font-medium text-gray-600">Motivo</label>
             <select
               value={motivoAjuste}
               onChange={e => setMotivoAjuste(e.target.value)}
-              className="px-4 py-2.5 text-base border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
+              className="flex-1 sm:flex-none px-4 py-2.5 text-base border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
             >
               <option value="Ajuste por conteo físico">Ajuste por conteo físico</option>
               <option value="Corrección de captura">Corrección de captura</option>
@@ -488,7 +511,72 @@ export default function EditarProducto({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Celular y tablet: cada lote es un bloque con su conteo abajo. */}
+        <div className="lg:hidden divide-y divide-gray-100">
+          {lotes.length === 0 && (
+            <div className="text-center py-12 px-4 text-gray-400 text-base">
+              Este producto no tiene existencia en ninguna plaza. Agrega un lote abajo.
+            </div>
+          )}
+          {lotes.map(l => {
+            const dif = diferenciaDe(l)
+            return (
+              <div key={l.id} className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0 text-sm">
+                    {chipPlaza(l)}
+                    <span className="font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md whitespace-nowrap">
+                      {l.ubicacion ?? 'sin ubicación'}
+                    </span>
+                    <span className="font-mono text-gray-600">{l.lote ?? 'sin lote'}</span>
+                    <span className="text-gray-500 whitespace-nowrap">{formatDia(l.caducidad)}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-xl font-semibold leading-none ${
+                      Number(l.existencia ?? 0) === 0 ? 'text-red-500' : 'text-gray-900'
+                    }`}>
+                      {piezas(l.existencia)}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">en sistema</div>
+                  </div>
+                </div>
+                {l.costo_unitario != null && (
+                  <div className="text-sm text-gray-500 mt-1">Costo {pesos(l.costo_unitario)}</div>
+                )}
+                <div className="mt-3 flex items-center gap-3">
+                  <input
+                    value={contados[l.id] ?? ''}
+                    onChange={e => setContados(c => ({ ...c, [l.id]: e.target.value }))}
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    step="1"
+                    placeholder="Contaste"
+                    aria-label="Piezas contadas"
+                    className="w-28 px-4 py-2.5 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
+                  />
+                  <div className="flex-1 min-w-0 text-base">{celdaDiferencia(dif)}</div>
+                  <button
+                    type="button"
+                    onClick={() => ajustar(l)}
+                    disabled={trabajando || dif === null || dif === 0 || !usuario}
+                    className="px-4 py-2.5 text-base font-medium text-[#003366] border border-[#003366]/30 rounded-lg hover:bg-[#003366]/5 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    Ajustar
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+          {lotes.length > 0 && (
+            <div className="px-4 py-3 bg-gray-50/50 flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Total</span>
+              <span className="text-lg font-semibold text-gray-900">{piezas(totalPiezas)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-base min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -515,17 +603,7 @@ export default function EditarProducto({
                 const dif = diferenciaDe(l)
                 return (
                   <tr key={l.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-5 py-4">
-                      {l.sucursal_clave ? (
-                        <span className={`text-sm font-semibold px-2.5 py-1 rounded-md whitespace-nowrap ${
-                          l.sucursal_clave === 'GDL' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
-                        }`}>
-                          {l.sucursal_clave}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-red-500">Sin plaza</span>
-                      )}
-                    </td>
+                    <td className="px-5 py-4">{chipPlaza(l)}</td>
                     <td className="px-5 py-4 font-mono text-sm text-gray-600">{l.lote ?? '—'}</td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{formatDia(l.caducidad)}</td>
                     <td className="px-5 py-4">
@@ -555,17 +633,7 @@ export default function EditarProducto({
                         className="w-28 px-4 py-2.5 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
                       />
                     </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      {dif === null ? (
-                        <span className="text-gray-300">—</span>
-                      ) : dif === 0 ? (
-                        <span className="text-gray-500">Cuadra</span>
-                      ) : (
-                        <span className={`font-semibold ${dif > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                          {dif > 0 ? '+' : '−'}{piezas(Math.abs(dif))}
-                        </span>
-                      )}
-                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap">{celdaDiferencia(dif)}</td>
                     <td className="px-5 py-4">
                       <button
                         type="button"
@@ -596,7 +664,7 @@ export default function EditarProducto({
       </div>
 
       {/* ---- Lote nuevo --------------------------------------------------- */}
-      <div className={cardCls + ' p-6'}>
+      <div className={cardCls + ' p-4 sm:p-6'}>
         {!abriendoLote ? (
           <button type="button" onClick={() => setAbriendoLote(true)} className={btnSecundario}>
             <PlusIcon className="w-5 h-5 text-gray-400" />
@@ -611,7 +679,7 @@ export default function EditarProducto({
               </p>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               <div>
                 <label className={labelCls}>Plaza</label>
                 <select
@@ -674,7 +742,7 @@ export default function EditarProducto({
                   className={inputCls}
                 />
               </div>
-              <div className="xl:col-span-3">
+              <div className="sm:col-span-2 xl:col-span-3">
                 <label className={labelCls}>Motivo</label>
                 <select
                   value={nuevo.motivo}

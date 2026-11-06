@@ -24,8 +24,8 @@ export default async function ProveedoresPage() {
   )
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Proveedores</h1>
         <p className="text-base text-gray-500 mt-1">{proveedores.length} registrados</p>
       </div>
@@ -36,16 +36,16 @@ export default async function ProveedoresPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
         {proveedores.map(p => {
           const numPrecios = p.num_precios
           return (
             <Link
               key={p.id}
               href={`/proveedores/${p.id}`}
-              className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-[#003366]/40 hover:shadow-sm transition-all"
+              className="group bg-white border border-gray-200 rounded-xl p-4 sm:p-5 hover:border-[#003366]/40 hover:shadow-sm transition-all"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-lg font-semibold text-gray-900 truncate">{p.nombre}</h2>
                   <p className="text-base text-gray-500 mt-0.5">{metodoLabel[p.metodo_ingesta as MetodoIngesta] ?? p.metodo_ingesta}</p>

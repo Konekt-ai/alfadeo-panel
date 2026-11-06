@@ -37,14 +37,18 @@ export default function RegistrarPago({
   ventaId,
   variante = 'primario',
   etiqueta = 'Registrar pago',
+  className = '',
 }: {
   /** Ventas del cliente que todavía deben algo. */
   ventas: VentaConSaldo[]
   clienteNombre?: string | null
   /** Venta que llega preseleccionada (desde una alerta o un renglón). */
   ventaId?: string
-  variante?: 'primario' | 'enlace'
+  /** 'secundario' es el botón con borde de las tarjetas del celular. */
+  variante?: 'primario' | 'secundario' | 'enlace'
   etiqueta?: string
+  /** Clases extra para el botón (ancho, orden), sin chocar con las de la variante. */
+  className?: string
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -158,13 +162,15 @@ export default function RegistrarPago({
         onClick={abrir}
         disabled={sinVentas}
         title={sinVentas ? 'Este cliente no tiene ventas con saldo.' : undefined}
-        className={
+        className={`${
           variante === 'primario'
             ? 'inline-flex items-center gap-2 px-5 py-2.5 bg-[#003366] text-white text-base font-medium rounded-lg hover:bg-[#002244] transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
-            : 'inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed'
-        }
+            : variante === 'secundario'
+              ? 'inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 bg-white text-[#003366] text-base font-medium rounded-lg hover:border-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
+              : 'inline-flex items-center gap-1.5 text-sm font-medium text-[#003366] hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed'
+        } ${className}`}
       >
-        <BanknotesIcon className={variante === 'primario' ? 'w-5 h-5' : 'w-4 h-4'} />
+        <BanknotesIcon className={variante === 'enlace' ? 'w-4 h-4' : 'w-5 h-5'} />
         {etiqueta}
       </button>
 
@@ -176,20 +182,22 @@ export default function RegistrarPago({
           {/* Hoja desde abajo en celular, ventana centrada en escritorio: lo
               usan mucho desde el teléfono (minuta 11). */}
           <div
-            className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto"
+            className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl max-h-[90dvh] overflow-y-auto overscroll-contain"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-gray-100">
-              <div>
+            {/* El encabezado se queda pegado arriba: con el teclado abierto la
+                hoja se desliza y la X tiene que seguir a la mano. */}
+            <div className="sticky top-0 z-10 bg-white flex items-start justify-between gap-4 px-4 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-gray-100">
+              <div className="min-w-0">
                 <h2 className="text-xl font-semibold text-gray-900">Registrar pago</h2>
                 {clienteNombre && (
-                  <p className="text-base text-gray-500 mt-0.5">{clienteNombre}</p>
+                  <p className="text-base text-gray-500 mt-0.5 break-words">{clienteNombre}</p>
                 )}
               </div>
               <button
                 type="button"
                 onClick={cerrar}
-                className="p-2 -mr-2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="shrink-0 p-2.5 -mr-2.5 -mt-1 text-gray-400 hover:text-gray-600 transition-colors"
                 aria-label="Cerrar"
               >
                 <XMarkIcon className="w-6 h-6" />
@@ -197,7 +205,7 @@ export default function RegistrarPago({
             </div>
 
             {ok ? (
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-5">
                 <div className="flex items-start gap-2.5 bg-emerald-50 text-emerald-800 rounded-xl p-4 text-base">
                   <CheckCircleIcon className="w-5 h-5 mt-0.5 shrink-0" />
                   <span>{ok}</span>
@@ -211,7 +219,7 @@ export default function RegistrarPago({
                 </button>
               </div>
             ) : (
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-5">
                 <div>
                   <label className={labelCls} htmlFor="pago-venta">Venta a la que se aplica *</label>
                   <select
@@ -228,7 +236,7 @@ export default function RegistrarPago({
                     ))}
                   </select>
                   {venta && (
-                    <p className="text-sm text-gray-500 mt-1.5">
+                    <p className="text-sm text-gray-500 mt-1.5 break-words">
                       Total {pesos(venta.total)} · saldo {pesos(venta.saldo)} ·{' '}
                       {venta.fecha_vencimiento
                         ? `vence ${formatDia(venta.fecha_vencimiento)}`
@@ -330,7 +338,7 @@ export default function RegistrarPago({
                   <button
                     type="button"
                     onClick={cerrar}
-                    className="px-5 py-3 text-base font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                    className="px-5 py-3 text-base font-medium text-gray-500 hover:text-gray-700 rounded-lg transition-colors"
                   >
                     Cancelar
                   </button>

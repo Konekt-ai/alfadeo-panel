@@ -309,7 +309,7 @@ function TarjetaGrupo({ grupo }: { grupo: GrupoDuplicado }) {
             className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-gray-100">
+            <div className="flex items-start justify-between gap-4 px-4 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-gray-100">
               <h3 className="text-xl font-semibold text-gray-900">Confirmar la fusión</h3>
               <button
                 type="button"
@@ -321,7 +321,7 @@ function TarjetaGrupo({ grupo }: { grupo: GrupoDuplicado }) {
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-5">
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                 <p className="text-sm font-semibold text-emerald-800 uppercase tracking-wide">Se conserva</p>
                 <p className="text-base text-emerald-900 mt-1">
