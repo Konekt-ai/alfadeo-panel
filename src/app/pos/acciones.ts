@@ -286,6 +286,82 @@ export async function buscarClientesPOS(
   }
 }
 
+export interface ClienteNuevo {
+  nombre: string
+  empresa: string | null
+  tipo: TipoCliente
+  telefono_wa: string | null
+  correo: string | null
+}
+
+const TIPOS_CLIENTE: TipoCliente[] = ['hospital', 'clinica', 'farmacia', 'gobierno', 'distribuidor', 'medico', 'otro']
+
+/**
+ * Alta rápida desde el cobro: el cliente no está registrado y se da de alta
+ * sin salir de la venta. Queda en el módulo de Clientes como cualquier otro,
+ * de contado (sin días ni límite de crédito): el crédito se pacta después.
+ *
+ * Antes de crear se busca si ya existe con el mismo teléfono, correo o
+ * nombre. En ese caso no se crea otro: se regresa el que ya está para que
+ * la caja lo use. Dos personas sí pueden llamarse igual, así que con
+ * `aunqueExista` la caja confirma que es otro y se crea de todos modos.
+ */
+export async function crearClienteRapido(
+  datos: ClienteNuevo,
+  sucursalId: string | null,
+  aunqueExista = false,
+): Promise<{ cliente?: ClienteFila; existente?: ClienteFila; error?: string }> {
+  const limpio = (v: string | null | undefined) => (v ?? '').trim().replace(/\s+/g, ' ') || null
+  const nombre = limpio(datos.nombre)
+  const empresa = limpio(datos.empresa)
+  // El teléfono se guarda en puros dígitos: así lo usa el enlace de WhatsApp
+  // de cobranza y así se compara contra los que ya existen.
+  const telefono = (datos.telefono_wa ?? '').replace(/\D/g, '') || null
+  const correo = limpio(datos.correo)?.toLowerCase() ?? null
+  const tipo = TIPOS_CLIENTE.includes(datos.tipo) ? datos.tipo : 'otro'
+
+  if (!nombre) return { error: 'Escribe el nombre del cliente.' }
+  if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return { error: 'El correo no parece válido.' }
+  }
+
+  const columnas = 'id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura'
+
+  const { data: ya, error: errorYa } = aunqueExista ? { data: null, error: null } : await uno<ClienteFila>(
+    `select ${columnas}
+       from clientes
+      where ($1::text is not null and regexp_replace(coalesce(telefono_wa, ''), '\\D', '', 'g') = $1)
+         or ($2::text is not null and lower(btrim(correo)) = $2)
+         or lower(btrim(nombre)) = lower($3)
+         or ($4::text is not null and lower(btrim(empresa)) = lower($4))
+      order by created_at
+      limit 1`,
+    [telefono, correo, nombre, empresa]
+  )
+  if (errorYa) return { error: errorYa.message }
+  if (ya) return { existente: ya }
+
+  try {
+    const [nuevo] = await qx<ClienteFila>(
+      `insert into clientes (nombre, empresa, tipo, telefono_wa, correo, sucursal_id,
+                             dias_credito, limite_credito, requiere_factura)
+       values ($1, $2, $3::tipo_cliente, $4, $5, $6::uuid, 0, 0, false)
+       returning ${columnas}`,
+      [nombre, empresa, tipo, telefono, correo, sucursalId || null]
+    )
+    revalidatePath('/clientes')
+    return {
+      cliente: {
+        ...nuevo,
+        dias_credito: numONulo(nuevo.dias_credito),
+        limite_credito: numONulo(nuevo.limite_credito),
+      },
+    }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
 // ---------------------------------------------------------------------
 //  3 · Cerrar la venta
 // ---------------------------------------------------------------------

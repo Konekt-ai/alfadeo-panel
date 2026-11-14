@@ -21,7 +21,7 @@ import { useState, useEffect, useRef, useTransition, useMemo, useCallback } from
 import Link from 'next/link'
 import {
   MagnifyingGlassIcon, PlusIcon, MinusIcon, XMarkIcon, TrashIcon, PrinterIcon,
-  ArrowPathIcon, LinkIcon,
+  ArrowPathIcon, LinkIcon, UserPlusIcon,
 } from '@heroicons/react/20/solid'
 import {
   ShoppingCartIcon, CheckCircleIcon, ExclamationTriangleIcon, UserIcon,
@@ -33,6 +33,7 @@ import {
   buscarProductosPOS, buscarClientesPOS, cerrarVentaPOS, fijarCajero, fijarPlaza,
   refrescarExistencias, ligarCodigoPOS,
 } from './acciones'
+import AltaRapidaCliente from './AltaRapidaCliente'
 
 // Los tipos de las acciones no se exportan; se derivan de su firma para que
 // no se puedan desincronizar.
@@ -90,6 +91,8 @@ export default function POSClient({
   const [cliente, setCliente] = useState<ClientePOS | null>(null)
   const [qCliente, setQCliente] = useState('')
   const [clientes, setClientes] = useState<ClientePOS[]>([])
+  // Formulario de alta rápida abierto (punto 3).
+  const [altaCliente, setAltaCliente] = useState(false)
   const [formaPago, setFormaPago] = useState<FormaPago>('efectivo')
   const [diasCredito, setDiasCredito] = useState(10)
   const [requiereFactura, setRequiereFactura] = useState(false)
@@ -328,6 +331,20 @@ export default function POSClient({
     return () => { cancelado = true; clearTimeout(t) }
   }, [qCliente])
 
+  // Lo mismo para un cliente encontrado en el buscador que para uno recién
+  // dado de alta: queda en la venta con sus condiciones.
+  const elegirCliente = (c: ClientePOS) => {
+    setCliente(c)
+    setClientes([])
+    setAltaCliente(false)
+    // El plazo pactado con el cliente manda (minuta 34).
+    if ((c.dias_credito ?? 0) > 0) {
+      setFormaPago('credito')
+      setDiasCredito(c.dias_credito as number)
+    }
+    if (c.requiere_factura) setRequiereFactura(true)
+  }
+
   // --- Totales ---------------------------------------------------------
 
   const totales = useMemo(() => {
@@ -398,7 +415,7 @@ export default function POSClient({
   }
 
   const nuevaVenta = () => {
-    setTicket(null); setCarrito([]); setCliente(null); setQCliente('')
+    setTicket(null); setCarrito([]); setCliente(null); setQCliente(''); setAltaCliente(false)
     setFormaPago('efectivo'); setRequiereFactura(false); setNotas(''); setError(null)
     setCodigoHuerfano(null); setQLigar(''); setResLigar([]); setAvisoLigado(null)
     setRefrescadoEn(null)
@@ -1024,6 +1041,13 @@ export default function POSClient({
                       Quitar
                     </button>
                   </div>
+                ) : altaCliente ? (
+                  <AltaRapidaCliente
+                    nombreInicial={qCliente.trim()}
+                    sucursalId={sucursal.id}
+                    alGuardar={elegirCliente}
+                    alCancelar={() => setAltaCliente(false)}
+                  />
                 ) : (
                   <>
                     <input
@@ -1037,16 +1061,7 @@ export default function POSClient({
                         {clientes.map(c => (
                           <button
                             key={c.id}
-                            onClick={() => {
-                              setCliente(c)
-                              setClientes([])
-                              // El plazo pactado con el cliente manda (minuta 34).
-                              if ((c.dias_credito ?? 0) > 0) {
-                                setFormaPago('credito')
-                                setDiasCredito(c.dias_credito as number)
-                              }
-                              if (c.requiere_factura) setRequiereFactura(true)
-                            }}
+                            onClick={() => elegirCliente(c)}
                             className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
                           >
                             <div className="font-medium text-base text-gray-900">
@@ -1060,9 +1075,20 @@ export default function POSClient({
                         ))}
                       </div>
                     )}
-                    <p className="text-sm text-gray-400 mt-1.5">
-                      Sin cliente se registra como venta de mostrador.
-                    </p>
+                    {/* Si no aparece, se da de alta aquí mismo y queda elegido. */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-1.5">
+                      <p className="text-sm text-gray-400">
+                        Sin cliente se registra como venta de mostrador.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setAltaCliente(true)}
+                        className="inline-flex items-center gap-1.5 -mr-2 px-2 py-2 text-sm font-medium text-[#003366] rounded-lg hover:bg-[#003366]/5"
+                      >
+                        <UserPlusIcon className="w-4 h-4" />
+                        Agregar cliente
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
