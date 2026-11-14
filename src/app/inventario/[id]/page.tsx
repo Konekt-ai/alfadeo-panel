@@ -29,8 +29,20 @@ const piezas = (n: number | null | undefined) => {
   return Number.isInteger(v) ? v.toLocaleString('es-MX') : v.toLocaleString('es-MX', { maximumFractionDigits: 3 })
 }
 
-export default async function ProductoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProductoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ desde?: string }>
+}) {
   const { id } = await params
+  // Si se abrió desde el verificador, el regreso es al verificador: quien
+  // está pasando cajas por el lector sigue con la siguiente.
+  const { desde } = await searchParams
+  const regreso = desde === 'verificador'
+    ? { href: '/verificador', label: 'Verificador' }
+    : { href: '/inventario', label: 'Inventario' }
   if (!ES_UUID.test(id ?? '')) return notFound()
 
   // ¿Vino el id de un lote o el del producto? Se acepta cualquiera de los dos.
@@ -110,10 +122,10 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <Link
-        href="/inventario"
+        href={regreso.href}
         className="inline-flex items-center gap-1.5 text-base text-gray-400 hover:text-gray-600 mb-6"
       >
-        <ArrowLeftIcon className="w-4 h-4" /> Inventario
+        <ArrowLeftIcon className="w-4 h-4" /> {regreso.label}
       </Link>
 
       {/* ---- Encabezado --------------------------------------------------- */}

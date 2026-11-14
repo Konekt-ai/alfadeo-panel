@@ -18,9 +18,10 @@
 //   · Guardado — confirmación de lo anterior.
 
 import { useState, useEffect, useRef, useCallback, useTransition } from 'react'
+import Link from 'next/link'
 import {
   MagnifyingGlassIcon, CheckCircleIcon, XMarkIcon, ArrowPathIcon,
-  InformationCircleIcon,
+  InformationCircleIcon, PencilSquareIcon,
 } from '@heroicons/react/20/solid'
 import { QrCodeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { pesos, formatDia, nombreProducto } from '@/lib/utils'
@@ -522,6 +523,17 @@ function FichaProducto({
         {p.codigo_barras && (
           <div className="font-mono text-lg text-gray-500 mt-4 break-all">{p.codigo_barras}</div>
         )}
+
+        {/* La ficha completa es la misma que abre Inventario: ahí se editan
+            los datos y se cuadran los lotes. `desde` es para que su enlace de
+            regreso traiga de vuelta al verificador y no a Inventario. */}
+        <Link
+          href={`/inventario/${p.producto_id}?desde=verificador`}
+          className="mt-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 border border-[#003366]/30 text-[#003366] text-base font-medium rounded-lg hover:bg-[#003366]/5 transition-colors"
+        >
+          <PencilSquareIcon className="w-5 h-5" />
+          Abrir ficha y editar
+        </Link>
       </div>
 
       {/* Existencia por plaza (minuta 28) */}
