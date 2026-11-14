@@ -1,12 +1,13 @@
 import { sql, faltaMigracion } from '@/lib/db'
 import Link from 'next/link'
 import {
-  PlusIcon, MagnifyingGlassIcon, ArrowUpTrayIcon, XMarkIcon,
+  PlusIcon, ArrowUpTrayIcon, XMarkIcon,
   QrCodeIcon, FunnelIcon, TableCellsIcon,
 } from '@heroicons/react/20/solid'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { UBICACIONES, SUCURSALES } from '@/lib/constantes'
 import { nombreProducto } from '@/lib/utils'
+import BuscadorInventario from './BuscadorInventario'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,14 +123,24 @@ function construirFiltros(f: Filtros, conEstado: boolean) {
 
   if (f.q) {
     // Se busca por nombre, empezando por el comercial: es como lo busca el
-    // equipo en la vida real, no por código de barras.
+    // equipo en la vida real. Y además por código de barras, para que la
+    // pistola sirva aquí también: el lector teclea el código y da Enter.
+    //
+    // El código va EXACTO, no con ilike: con "%750%" un escaneo traería
+    // medio catálogo. Se revisa también `producto_codigos`, donde quedan los
+    // códigos alternos y las claves de Aspel. Lo demás sigue igual, porque
+    // hay lotes de puros dígitos (24141800) que también se buscan así.
     const t = ph(`%${f.q}%`)
+    const exacto = ph(f.q)
     cond.push(
       `(coalesce(p.nombre_comercial, '') ilike ${t}
          or coalesce(p.nombre_generico, '') ilike ${t}
          or coalesce(p.nombre, '') ilike ${t}
          or coalesce(p.laboratorio, '') ilike ${t}
-         or coalesce(i.lote, p.lote, '') ilike ${t})`
+         or coalesce(i.lote, p.lote, '') ilike ${t}
+         or ${COD} = ${exacto}
+         or exists (select 1 from producto_codigos pc
+                     where pc.producto_id = p.id and pc.codigo = ${exacto}))`
     )
   }
   if (f.sucursal)    cond.push(`s.clave = ${ph(f.sucursal)}`)
@@ -515,9 +526,13 @@ export default async function InventarioPage({
     </div>
   )
 
-  const sinResultados = activos.length > 0
-    ? 'Ningún producto coincide con estos filtros.'
-    : 'Sin resultados.'
+  // Un escaneo que no encuentra nada merece decirlo con el código, para que
+  // se vea que el lector sí leyó y que lo que falta es registrarlo.
+  const sinResultados = f.q && /^\d{8,14}$/.test(f.q)
+    ? `Ningún producto tiene el código ${f.q}. Si es nuevo, regístralo en el Verificador.`
+    : activos.length > 0
+      ? 'Ningún producto coincide con estos filtros.'
+      : 'Sin resultados.'
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -593,15 +608,7 @@ export default async function InventarioPage({
           {f.existencia && <input type="hidden" name="existencia" value={f.existencia} />}
           {f.codigo     && <input type="hidden" name="codigo"     value={f.codigo} />}
 
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              name="q"
-              defaultValue={f.q ?? ''}
-              placeholder="Buscar por nombre comercial, genérico, laboratorio o lote..."
-              className="w-full pl-11 pr-4 py-3 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]"
-            />
-          </div>
+          <BuscadorInventario valor={f.q ?? ''} />
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto]">
             <select name="categoria" defaultValue={f.categoria ?? ''} className={CAMPO}>
