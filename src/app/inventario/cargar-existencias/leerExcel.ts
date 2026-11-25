@@ -89,7 +89,7 @@ function leerEncabezado(celdas: unknown[]): Mapa | null {
   return mapa
 }
 
-const texto = (v: unknown): string | null => {
+export const texto = (v: unknown): string | null => {
   if (v === null || v === undefined) return null
   // Un código de barras capturado como número: toFixed evita el 7.5e+12.
   const s = typeof v === 'number' && Number.isInteger(v) ? v.toFixed(0) : String(v)
@@ -117,7 +117,7 @@ function fecha(y: number, m: number, d: number): string | null {
  * Las cajas dicen "MAY-26": caducan al terminar ese mes. Por eso, cuando sólo
  * viene mes y año, se guarda el último día del mes.
  */
-function leerCaducidad(v: unknown): { caducidad: string | null; aviso?: string } {
+export function leerCaducidad(v: unknown): { caducidad: string | null; aviso?: string } {
   if (v === null || v === undefined || v === '') return { caducidad: null }
 
   // Fecha de Excel: días desde el 30 de diciembre de 1899. Se cuenta en UTC
@@ -147,7 +147,7 @@ function leerCaducidad(v: unknown): { caducidad: string | null; aviso?: string }
 
 // ---------------------------------------------------------------- piezas --
 
-function leerPiezas(v: unknown): { piezas: number | null; aviso?: string; error?: string } {
+export function leerPiezas(v: unknown): { piezas: number | null; aviso?: string; error?: string } {
   if (v === null || v === undefined || v === '') return { piezas: null }
   if (typeof v === 'number') {
     if (!Number.isFinite(v) || v < 0) return { piezas: null, error: `Piezas «${v}» no es válido.` }

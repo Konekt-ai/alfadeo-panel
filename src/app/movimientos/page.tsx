@@ -4,6 +4,7 @@
 
 import { sql, faltaMigracion } from '@/lib/db'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { ArrowUpTrayIcon } from '@heroicons/react/20/solid'
 import { SUCURSALES } from '@/lib/constantes'
 import { formatDate, formatDia, movimientoColor, movimientoLabel } from '@/lib/utils'
 import { listarUsuarios, resolverSucursal, usuarioActual } from '@/lib/usuario'
@@ -318,21 +319,29 @@ export default async function MovimientosPage({
         </div>
       )}
 
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Movimientos de inventario</h1>
-        <p className="text-base text-gray-500 mt-1">
-          {total.toLocaleString('es-MX')} movimientos
-          {movimientos.length < total && ` · mostrando ${movimientos.length.toLocaleString('es-MX')}`}
-          {movimientos.length > 0 && (
-            <>
-              {' · '}
-              <span className="text-emerald-600 font-medium">+{piezas(entraron)}</span>
-              {' / '}
-              <span className="text-orange-600 font-medium">−{piezas(salieron)}</span>
-              {' pza'}
-            </>
-          )}
-        </p>
+      <div className="mb-6 sm:mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Movimientos de inventario</h1>
+          <p className="text-base text-gray-500 mt-1">
+            {total.toLocaleString('es-MX')} movimientos
+            {movimientos.length < total && ` · mostrando ${movimientos.length.toLocaleString('es-MX')}`}
+            {movimientos.length > 0 && (
+              <>
+                {' · '}
+                <span className="text-emerald-600 font-medium">+{piezas(entraron)}</span>
+                {' / '}
+                <span className="text-orange-600 font-medium">−{piezas(salieron)}</span>
+                {' pza'}
+              </>
+            )}
+          </p>
+        </div>
+        {/* Muchas entradas o salidas de una vez: Excel o XML (punto 15). */}
+        <a href="/movimientos/importar"
+          className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white transition-colors">
+          <ArrowUpTrayIcon className="w-5 h-5 text-gray-400" />
+          Importar Excel o XML
+        </a>
       </div>
 
       {/* Alta rápida: entrada, salida o ajuste */}
