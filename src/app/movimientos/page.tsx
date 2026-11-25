@@ -101,6 +101,70 @@ const quienFirmo = (m: Movimiento) =>
     </span>
   )
 
+// La factura del documento que originó el movimiento (punto 5): la venta
+// para las salidas por venta, la compra para las entradas de proveedor.
+// Se lee de la venta o compra, así que en cuanto se liga la factura, todos
+// sus movimientos aparecen como facturados.
+interface Facturacion {
+  /** null = el movimiento no viene de una venta ni de una compra (ajuste, traslado...). */
+  fact_doc: 'venta' | 'compra' | null
+  fact_doc_id: string | null
+  fact_doc_folio: string | null
+  fact_uuid: string | null
+  fact_serie: string | null
+  fact_folio: string | null
+  fact_fecha: string | null
+  fact_contraparte: string | null
+  fact_emisor: string | null
+}
+
+type MovimientoConFactura = Movimiento & Facturacion
+
+const EMISOR_FACTURA: Record<string, string> = {
+  aspel: 'Aspel', interno: 'este sistema', contalink: 'Contalink', otro: 'otro sistema',
+}
+
+const facturacion = (m: MovimientoConFactura) => {
+  if (!m.fact_doc) return <span className="text-sm text-gray-300">—</span>
+
+  const documento = (
+    <a href={`/${m.fact_doc === 'venta' ? 'ventas' : 'compras'}/${m.fact_doc_id}`}
+      className="text-[#003366] hover:underline">
+      {m.fact_doc === 'venta' ? 'Venta' : 'Compra'} {m.fact_doc_folio ?? ''}
+    </a>
+  )
+
+  if (!m.fact_uuid) {
+    return (
+      <div className="text-sm">
+        <span className="inline-block font-semibold px-2.5 py-1 rounded-md whitespace-nowrap bg-amber-100 text-amber-800">
+          No facturado
+        </span>
+        <div className="text-gray-500 mt-1">{documento}</div>
+      </div>
+    )
+  }
+
+  const folio = [m.fact_serie, m.fact_folio].filter(Boolean).join('-')
+  return (
+    <div className="text-sm">
+      <span className="inline-block font-semibold px-2.5 py-1 rounded-md whitespace-nowrap bg-emerald-100 text-emerald-800">
+        Facturado
+      </span>
+      <div className="text-gray-700 mt-1 break-words">
+        Factura {folio || <span className="font-mono">{m.fact_uuid.slice(0, 8)}…</span>}
+        {m.fact_emisor && EMISOR_FACTURA[m.fact_emisor] && (
+          <span className="text-gray-500"> · {EMISOR_FACTURA[m.fact_emisor]}</span>
+        )}
+      </div>
+      <div className="text-gray-500 break-words">
+        {[m.fact_contraparte, m.fact_fecha && formatDia(m.fact_fecha.slice(0, 10))].filter(Boolean).join(' · ')}
+      </div>
+      <div className="text-gray-500">{documento}</div>
+    </div>
+  )
+}
+
 export default async function MovimientosPage({
   searchParams,
 }: {
@@ -169,16 +233,36 @@ export default async function MovimientosPage({
   // El total se calcula en la misma consulta con una ventana, para no hacer
   // dos viajes ni volver a evaluar los filtros.
   // "Cargar más" acumula: la página 2 muestra los 200 más recientes.
-  const { data: filas, error } = await sql<Movimiento & { total_filas: number }>(
-    `select *, count(*) over ()::int as total_filas
-       from v_movimientos
-       ${where}
-      order by created_at desc, id desc
+  // Los filtros se aplican sobre la vista tal cual (subconsulta) y después se
+  // le pega la factura de su venta o compra. `referencia_id` es el id del
+  // documento que originó el movimiento; los uuid no se repiten entre
+  // tablas, así que no hace falta fiarse del texto de `referencia_tipo`.
+  const { data: filas, error } = await sql<MovimientoConFactura & { total_filas: number }>(
+    `select m.*, count(*) over ()::int as total_filas,
+            case when v.id is not null then 'venta'
+                 when c.id is not null then 'compra' end          as fact_doc,
+            coalesce(v.id, c.id)                                   as fact_doc_id,
+            coalesce(v.folio, c.folio)                             as fact_doc_folio,
+            coalesce(v.factura_uuid, c.factura_uuid)::text         as fact_uuid,
+            coalesce(v.factura_serie, c.factura_serie)             as fact_serie,
+            coalesce(v.factura_folio, c.factura_folio)             as fact_folio,
+            case when v.id is not null then v.facturado_en::text
+                 else c.fecha::text end                            as fact_fecha,
+            case when v.id is not null
+                 then coalesce(cl.razon_social, cl.empresa, cl.nombre)
+                 else coalesce(pr.nombre, c.emisor_nombre) end     as fact_contraparte,
+            v.factura_emisor                                       as fact_emisor
+       from (select * from v_movimientos ${where}) m
+       left join ventas      v  on v.id  = m.referencia_id
+       left join compras     c  on c.id  = m.referencia_id
+       left join clientes    cl on cl.id = v.cliente_id
+       left join proveedores pr on pr.id = c.proveedor_id
+      order by m.created_at desc, m.id desc
       limit ${pagina * POR_PAGINA}`,
     par
   )
 
-  const movimientos = filas as Movimiento[]
+  const movimientos = filas as MovimientoConFactura[]
   const total = filas[0]?.total_filas ?? movimientos.length
   const hayMas = movimientos.length < total
 
@@ -403,7 +487,7 @@ export default async function MovimientosPage({
       {/* Escritorio: tabla. */}
       <div className="hidden lg:block bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-base min-w-[1240px]">
+          <table className="w-full text-base min-w-[1420px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
@@ -411,6 +495,9 @@ export default async function MovimientosPage({
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Lote</th>
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Cantidad</th>
+                {/* Junto a la cantidad, no al final: en una tabla ancha lo de
+                    la derecha queda fuera de la vista. */}
+                <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Facturación</th>
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Existencia</th>
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Motivo</th>
                 <th className="text-left px-5 py-4 text-sm font-semibold text-gray-500 uppercase tracking-wide">Plaza</th>
@@ -420,7 +507,7 @@ export default async function MovimientosPage({
             <tbody className="divide-y divide-gray-50">
               {movimientos.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-20 text-gray-400 text-base">
+                  <td colSpan={10} className="text-center py-20 text-gray-400 text-base">
                     {sinResultados}
                   </td>
                 </tr>
@@ -447,6 +534,7 @@ export default async function MovimientosPage({
                     <td className={`px-5 py-4 whitespace-nowrap text-lg font-semibold tabular-nums ${colorCantidad(m)}`}>
                       {cantidadConSigno(m)}
                     </td>
+                    <td className="px-5 py-4 min-w-[200px]">{facturacion(m)}</td>
                     <td className="px-5 py-4 text-sm text-gray-500">{existencias(m)}</td>
                     <td className="px-5 py-4 text-sm text-gray-600 min-w-[180px]">
                       {m.motivo || '—'}
@@ -515,6 +603,10 @@ export default async function MovimientosPage({
                     <span>{quienFirmo(m)}</span>
                   </div>
                 </div>
+
+                {m.fact_doc && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">{facturacion(m)}</div>
+                )}
               </div>
             )
           })}

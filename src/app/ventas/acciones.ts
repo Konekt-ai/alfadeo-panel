@@ -15,6 +15,7 @@ import { revalidatePath } from 'next/cache'
 import { qx, uno } from '@/lib/db'
 import { usuarioActual } from '@/lib/usuario'
 import { pesos } from '@/lib/utils'
+import { parsearCFDI } from '../compras/cfdi'
 import type { EstadoVenta, FacturaEmisor, MetodoPago } from '@/lib/types'
 
 type Resultado = { ok: true; mensaje: string } | { error: string }
@@ -57,6 +58,9 @@ export async function registrarFactura(input: {
     return { error: 'El UUID no tiene el formato de un folio fiscal (8-4-4-4-12). Cópialo del PDF o del XML.' }
   }
 
+  const duplicada = await facturaYaLigada(uuid, input.ventaId)
+  if (duplicada) return { error: duplicada }
+
   // `returning id` cumple la misma función que el `.select()` de antes:
   // distinguir "no existe / está cancelada" de "sí se actualizó".
   let data: Array<{ id: string }>
@@ -85,6 +89,122 @@ export async function registrarFactura(input: {
 
   refrescar(input.ventaId)
   return { ok: true, mensaje: 'Factura registrada.' }
+}
+
+/**
+ * Una factura es una sola venta. Si el UUID ya está en otra venta, o es el
+ * de una factura de proveedor capturada en Compras, se dice dónde está en
+ * vez de ligarla dos veces. Devuelve el mensaje, o null si está libre.
+ */
+async function facturaYaLigada(uuid: string, ventaId: string): Promise<string | null> {
+  const { data } = await uno<{ donde: string; folio: string | null }>(
+    `select 'venta' as donde, folio from ventas
+      where lower(factura_uuid::text) = lower($1) and id <> $2::uuid
+     union all
+     select 'compra', folio from compras
+      where lower(factura_uuid::text) = lower($1)
+     limit 1`,
+    [uuid, ventaId]
+  )
+  if (!data) return null
+  return data.donde === 'venta'
+    ? `Esa factura ya está ligada a la venta ${data.folio ?? 'sin folio'}. Una factura no se liga dos veces.`
+    : `Ese UUID es de una factura de proveedor, capturada en la compra ${data.folio ?? 'sin folio'}.`
+}
+
+/**
+ * Liga la factura a partir del XML timbrado (el que entrega FACTURE o
+ * cualquier otro sistema). Del XML salen serie, folio, UUID y fecha: nadie
+ * los copia a mano.
+ *
+ * Antes de ligarla se revisa que sea de ESTA venta: que el RFC del receptor
+ * sea el del cliente y que el total cuadre. Si el total no cuadra (una
+ * factura que agrupa varias ventas, un ajuste de centavos) se avisa, y con
+ * `aunqueNoCuadre` la persona confirma y se liga igual. El RFC no se puede
+ * forzar: si es de otro cliente, es otra factura.
+ */
+export async function ligarFacturaXML(input: {
+  ventaId: string
+  emisor: string
+  xml: string
+  aunqueNoCuadre?: boolean
+}): Promise<Resultado | { revisar: string }> {
+  const emisor = input.emisor as FacturaEmisor
+  if (!EMISORES.includes(emisor)) {
+    return { error: 'Indica quién timbró la factura.' }
+  }
+
+  let cfdi
+  try {
+    cfdi = parsearCFDI(input.xml)
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+  if (!cfdi.uuid || !UUID_CFDI.test(cfdi.uuid)) {
+    return { error: 'El XML no trae timbre fiscal: es una factura sin timbrar o un borrador. Sube el XML ya timbrado.' }
+  }
+
+  const { data: venta, error } = await uno<{
+    folio: string | null
+    estado: EstadoVenta
+    total: number
+    cliente_rfc: string | null
+    cliente: string | null
+  }>(
+    `select v.folio, v.estado, v.total, c.rfc as cliente_rfc,
+            coalesce(c.razon_social, c.empresa, c.nombre) as cliente
+       from ventas v
+       left join clientes c on c.id = v.cliente_id
+      where v.id = $1::uuid`,
+    [input.ventaId]
+  )
+  if (error) return { error: error.message }
+  if (!venta) return { error: 'Esa venta ya no existe.' }
+  if (venta.estado === 'cancelada') return { error: 'La venta está cancelada: no se le liga factura.' }
+
+  const duplicada = await facturaYaLigada(cfdi.uuid, input.ventaId)
+  if (duplicada) return { error: duplicada }
+
+  // RFC genérico de público en general: es válido para cualquier venta.
+  const rfcXml = (cfdi.receptor_rfc ?? '').toUpperCase()
+  const rfcCliente = (venta.cliente_rfc ?? '').trim().toUpperCase()
+  if (rfcCliente && rfcXml && rfcXml !== rfcCliente && rfcXml !== 'XAXX010101000') {
+    return {
+      error: `La factura está a nombre de ${cfdi.receptor_nombre ?? rfcXml} (RFC ${rfcXml}), ` +
+        `pero el cliente de la venta tiene RFC ${rfcCliente}. Revisa que sea la factura correcta.`,
+    }
+  }
+
+  const diferencia = Math.abs(Number(cfdi.total) - Number(venta.total))
+  if (diferencia > 1 && !input.aunqueNoCuadre) {
+    return {
+      revisar: `El total de la factura (${pesos(cfdi.total)}) no es el de la venta (${pesos(Number(venta.total))}). ` +
+        '¿Es la factura correcta?',
+    }
+  }
+
+  try {
+    await qx(
+      `update ventas
+          set factura_emisor   = $1,
+              factura_serie    = $2,
+              factura_folio    = $3,
+              factura_uuid     = $4,
+              requiere_factura = true,
+              -- La Fecha del CFDI viene sin zona, en la hora local de
+              -- donde se expidió: Guadalajara o Monterrey, misma zona que CDMX.
+              facturado_en     = coalesce($5::timestamp at time zone 'America/Mexico_City', now()),
+              updated_at       = now()
+        where id = $6::uuid`,
+      [emisor, cfdi.serie, cfdi.folio, cfdi.uuid, cfdi.fecha, input.ventaId]
+    )
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+
+  refrescar(input.ventaId)
+  const folio = [cfdi.serie, cfdi.folio].filter(Boolean).join('-')
+  return { ok: true, mensaje: `Factura ${folio || cfdi.uuid} ligada a la venta.` }
 }
 
 /**

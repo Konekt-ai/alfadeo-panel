@@ -11,7 +11,7 @@ import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/20/so
 import { METODOS_PAGO } from '@/lib/constantes'
 import { pesos } from '@/lib/utils'
 import type { EstadoVenta } from '@/lib/types'
-import { registrarFactura, cancelarVenta, registrarPago } from '../acciones'
+import { registrarFactura, ligarFacturaXML, cancelarVenta, registrarPago } from '../acciones'
 
 const EMISORES = [
   { valor: 'interno',   label: 'Desde este sistema' },
@@ -43,8 +43,10 @@ export default function AccionesVenta({
   const [abierto, setAbierto] = useState<'factura' | 'pago' | 'cancelar' | null>(null)
 
   // Factura. Si el cliente factura con su propio sistema, ese es el que se
-  // propone: es el caso de Grajes con Contalink (minuta 36).
-  const [emisor, setEmisor] = useState(facturaExterna ?? 'interno')
+  // propone: es el caso de Grajes con Contalink (minuta 36). Si no, Aspel:
+  // las facturas se timbran en Aspel FACTURE.
+  const [emisor, setEmisor] = useState(facturaExterna ?? 'aspel')
+  const [archivoXml, setArchivoXml] = useState<string | null>(null)
   const [serie, setSerie] = useState('')
   const [folio, setFolio] = useState('')
   const [uuid, setUuid] = useState('')
@@ -64,6 +66,27 @@ export default function AccionesVenta({
       const r = await fn()
       if ('error' in r) { setAviso({ tipo: 'error', texto: r.error }); return }
       setAviso({ tipo: 'ok', texto: r.mensaje })
+      setAbierto(null)
+      router.refresh()
+    })
+  }
+
+  // El XML trae serie, folio, UUID y fecha. Si el total no cuadra con la
+  // venta, el servidor pregunta antes de ligarla.
+  const ligarXml = (file: File) => {
+    setAviso(null)
+    setArchivoXml(file.name)
+    startTransition(async () => {
+      const xml = await file.text()
+      let r = await ligarFacturaXML({ ventaId, emisor, xml })
+      if ('revisar' in r) {
+        if (!window.confirm(r.revisar)) { setArchivoXml(null); return }
+        r = await ligarFacturaXML({ ventaId, emisor, xml, aunqueNoCuadre: true })
+      }
+      if ('revisar' in r) return
+      if ('error' in r) { setAviso({ tipo: 'error', texto: r.error }); setArchivoXml(null); return }
+      setAviso({ tipo: 'ok', texto: r.mensaje })
+      setArchivoXml(null)
       setAbierto(null)
       router.refresh()
     })
@@ -107,6 +130,33 @@ export default function AccionesVenta({
                     {EMISORES.map(e => <option key={e.valor} value={e.valor}>{e.label}</option>)}
                   </select>
                 </div>
+
+                {/* Lo normal: subir el XML timbrado y que el sistema lea los datos. */}
+                <div>
+                  <label className={label}>XML de la factura</label>
+                  <label className={`flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed rounded-lg text-base font-medium transition-colors ${
+                    pendiente ? 'border-gray-200 text-gray-400' : 'border-[#003366]/30 text-[#003366] hover:bg-[#003366]/5 cursor-pointer'
+                  }`}>
+                    {pendiente && archivoXml ? `Leyendo ${archivoXml}…` : 'Subir XML timbrado'}
+                    <input
+                      type="file"
+                      accept=".xml,text/xml,application/xml"
+                      className="hidden"
+                      disabled={pendiente}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) ligarXml(f); e.target.value = '' }}
+                    />
+                  </label>
+                  <p className="text-sm text-gray-400 mt-1.5">
+                    Se leen serie, folio, UUID y fecha, y se revisa que el RFC y el total sean de esta venta.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 text-sm text-gray-400">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  o captúrala a mano
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={label}>Serie</label>

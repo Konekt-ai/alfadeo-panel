@@ -22,11 +22,17 @@ const CANALES: Record<string, string> = {
 export default async function VentaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  const [ventaRes, itemsRes, pagosRes] = await Promise.all([
+  const [ventaRes, itemsRes, pagosRes, facturaRes] = await Promise.all([
     uno<VentaCobranza>(`select * from v_ventas_cobranza where venta_id = $1::uuid`, [id]),
     sql<VentaItem>(`select * from venta_items where venta_id = $1::uuid order by posicion`, [id]),
     sql<Pago>(`select * from pagos where venta_id = $1::uuid order by fecha desc`, [id]),
+    // Serie, folio y fecha de la factura se leen de la venta: la vista de
+    // cobranza sólo trae el UUID.
+    uno<{ factura_serie: string | null; factura_folio: string | null; facturado_en: string | null }>(
+      `select factura_serie, factura_folio, facturado_en from ventas where id = $1::uuid`, [id]
+    ),
   ])
+  const factura = facturaRes.data
 
   // Si la vista todavía no existe es que falta la migración; se distingue de
   // "la venta no existe" para no mandar un 404 engañoso.
@@ -156,6 +162,9 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
             {venta.factura_uuid ? (
               <div className="grid sm:grid-cols-2 gap-5">
                 {dato('Quién timbró', EMISOR[venta.factura_emisor ?? ''] ?? venta.factura_emisor)}
+                {(factura?.factura_serie || factura?.factura_folio) &&
+                  dato('Serie y folio', [factura.factura_serie, factura.factura_folio].filter(Boolean).join('-'))}
+                {factura?.facturado_en && dato('Fecha de la factura', formatDate(factura.facturado_en))}
                 {dato('Folio fiscal', <span className="font-mono text-sm break-all">{venta.factura_uuid}</span>)}
               </div>
             ) : (
