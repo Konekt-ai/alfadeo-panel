@@ -13,7 +13,7 @@ import { ArrowLeftIcon, ClockIcon, QrCodeIcon } from '@heroicons/react/20/solid'
 import { sql, uno, faltaMigracion } from '@/lib/db'
 import { resolverSucursal, usuarioActual } from '@/lib/usuario'
 import { formatDate, formatDia, movimientoColor, movimientoLabel } from '@/lib/utils'
-import type { Movimiento } from '@/lib/types'
+import { facturacion, COLUMNAS_FACTURA, JOINS_FACTURA, type MovimientoConFactura } from '../../movimientos/facturacion'
 import EditarProducto, {
   type LoteFila, type ProductoFila, type Sugerencias,
 } from './EditarProducto'
@@ -80,11 +80,15 @@ export default async function ProductoPage({
     [productoId]
   )
 
-  const { data: movimientos, error: errorMovs } = await sql<Movimiento>(
-    `select * from v_movimientos
-      where producto_id = $1::uuid
-      order by created_at desc, id desc
-      limit 30`,
+  // Con su factura pegada, igual que en Movimientos (punto 5).
+  const { data: movimientos, error: errorMovs } = await sql<MovimientoConFactura>(
+    `select m.*, ${COLUMNAS_FACTURA}
+       from (select * from v_movimientos
+              where producto_id = $1::uuid
+              order by created_at desc, id desc
+              limit 30) m
+       ${JOINS_FACTURA}
+      order by m.created_at desc, m.id desc`,
     [productoId]
   )
 
@@ -230,17 +234,19 @@ export default async function ProductoPage({
                   {[m.motivo, m.usuario].filter(Boolean).join(' · ')}
                 </div>
               )}
+              {m.fact_doc && <div className="mt-2">{facturacion(m)}</div>}
             </div>
           ))}
         </div>
 
         <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full text-base min-w-[900px]">
+          <table className="w-full text-base min-w-[1100px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
                 <th className={thCls}>Cuándo</th>
                 <th className={thCls}>Tipo</th>
                 <th className={thCls}>Cantidad</th>
+                <th className={thCls}>Facturación</th>
                 <th className={thCls}>Quedó en</th>
                 <th className={thCls}>Lote</th>
                 <th className={thCls}>Plaza</th>
@@ -251,7 +257,7 @@ export default async function ProductoPage({
             <tbody className="divide-y divide-gray-50">
               {movimientos.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-20 text-gray-400 text-base">
+                  <td colSpan={9} className="text-center py-20 text-gray-400 text-base">
                     Todavía no se le ha movido nada a este producto.
                   </td>
                 </tr>
@@ -269,6 +275,7 @@ export default async function ProductoPage({
                       {m.cantidad > 0 ? '+' : '−'}{piezas(Math.abs(Number(m.cantidad)))}
                     </span>
                   </td>
+                  <td className="px-5 py-4 min-w-[190px]">{facturacion(m)}</td>
                   <td className="px-5 py-4 text-gray-500 whitespace-nowrap">
                     {piezas(m.existencia_antes)} → <strong className="text-gray-900">{piezas(m.existencia_despues)}</strong>
                   </td>

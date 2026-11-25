@@ -254,7 +254,26 @@ interface ClienteFila {
   dias_credito: number | null
   limite_credito: number | null
   requiere_factura: boolean | null
+  /** Para facturar hacen falta RFC y razón social (FACTURE los pide). */
+  rfc: string | null
+  razon_social: string | null
 }
+
+const COLUMNAS_CLIENTE =
+  'id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura, rfc, razon_social'
+
+const aFila = (c: ClienteFila): ClienteFila => ({
+  ...c,
+  dias_credito: numONulo(c.dias_credito),
+  limite_credito: numONulo(c.limite_credito),
+})
+
+// RFC de persona moral (3 letras) o física (4), fecha AAMMDD y homoclave.
+const RFC = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/
+
+/** Mayúsculas y sin espacios ni guiones: así viene en el CFDI. */
+const normalizarRfc = (v: string | null | undefined) =>
+  (v ?? '').toUpperCase().replace(/[\s-]/g, '') || null
 
 /** Buscador simple por nombre o empresa. La venta también puede ir sin cliente. */
 export async function buscarClientesPOS(
@@ -268,7 +287,7 @@ export async function buscarClientesPOS(
   const patron = '%' + texto.replace(/([%_\\])/g, '\\$1') + '%'
 
   const { data: filas, error } = await sql<ClienteFila>(
-    `select id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura
+    `select ${COLUMNAS_CLIENTE}
        from clientes
       where nombre ilike $1 or empresa ilike $1
       order by nombre
@@ -277,13 +296,7 @@ export async function buscarClientesPOS(
   )
 
   if (error) return { clientes: [], error: error.message }
-  return {
-    clientes: filas.map(c => ({
-      ...c,
-      dias_credito: numONulo(c.dias_credito),
-      limite_credito: numONulo(c.limite_credito),
-    })),
-  }
+  return { clientes: filas.map(aFila) }
 }
 
 export interface ClienteNuevo {
@@ -292,6 +305,8 @@ export interface ClienteNuevo {
   tipo: TipoCliente
   telefono_wa: string | null
   correo: string | null
+  rfc: string | null
+  razon_social: string | null
 }
 
 const TIPOS_CLIENTE: TipoCliente[] = ['hospital', 'clinica', 'farmacia', 'gobierno', 'distribuidor', 'medico', 'otro']
@@ -301,7 +316,7 @@ const TIPOS_CLIENTE: TipoCliente[] = ['hospital', 'clinica', 'farmacia', 'gobier
  * sin salir de la venta. Queda en el módulo de Clientes como cualquier otro,
  * de contado (sin días ni límite de crédito): el crédito se pacta después.
  *
- * Antes de crear se busca si ya existe con el mismo teléfono, correo o
+ * Antes de crear se busca si ya existe con el mismo RFC, teléfono, correo o
  * nombre. En ese caso no se crea otro: se regresa el que ya está para que
  * la caja lo use. Dos personas sí pueden llamarse igual, así que con
  * `aunqueExista` la caja confirma que es otro y se crea de todos modos.
@@ -310,7 +325,7 @@ export async function crearClienteRapido(
   datos: ClienteNuevo,
   sucursalId: string | null,
   aunqueExista = false,
-): Promise<{ cliente?: ClienteFila; existente?: ClienteFila; error?: string }> {
+): Promise<{ cliente?: ClienteFila; existente?: ClienteFila; porRfc?: boolean; error?: string }> {
   const limpio = (v: string | null | undefined) => (v ?? '').trim().replace(/\s+/g, ' ') || null
   const nombre = limpio(datos.nombre)
   const empresa = limpio(datos.empresa)
@@ -319,16 +334,27 @@ export async function crearClienteRapido(
   const telefono = (datos.telefono_wa ?? '').replace(/\D/g, '') || null
   const correo = limpio(datos.correo)?.toLowerCase() ?? null
   const tipo = TIPOS_CLIENTE.includes(datos.tipo) ? datos.tipo : 'otro'
+  const rfc = normalizarRfc(datos.rfc)
+  const razonSocial = limpio(datos.razon_social)?.toUpperCase() ?? null
 
   if (!nombre) return { error: 'Escribe el nombre del cliente.' }
   if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return { error: 'El correo no parece válido.' }
   }
+  if (rfc && !RFC.test(rfc)) {
+    return { error: 'El RFC no tiene el formato correcto (12 caracteres para empresa, 13 para persona).' }
+  }
 
-  const columnas = 'id, nombre, empresa, tipo, ciudad, dias_credito, limite_credito, requiere_factura'
+  // El RFC sí identifica a una sola persona o empresa: ése no se puede forzar.
+  if (rfc) {
+    const { data: conRfc } = await uno<ClienteFila>(
+      `select ${COLUMNAS_CLIENTE} from clientes where upper(btrim(rfc)) = $1 limit 1`, [rfc]
+    )
+    if (conRfc) return { existente: aFila(conRfc), porRfc: true }
+  }
 
   const { data: ya, error: errorYa } = aunqueExista ? { data: null, error: null } : await uno<ClienteFila>(
-    `select ${columnas}
+    `select ${COLUMNAS_CLIENTE}
        from clientes
       where ($1::text is not null and regexp_replace(coalesce(telefono_wa, ''), '\\D', '', 'g') = $1)
          or ($2::text is not null and lower(btrim(correo)) = $2)
@@ -339,24 +365,53 @@ export async function crearClienteRapido(
     [telefono, correo, nombre, empresa]
   )
   if (errorYa) return { error: errorYa.message }
-  if (ya) return { existente: ya }
+  if (ya) return { existente: aFila(ya) }
 
   try {
     const [nuevo] = await qx<ClienteFila>(
-      `insert into clientes (nombre, empresa, tipo, telefono_wa, correo, sucursal_id,
+      `insert into clientes (nombre, empresa, tipo, telefono_wa, correo, rfc, razon_social, sucursal_id,
                              dias_credito, limite_credito, requiere_factura)
-       values ($1, $2, $3::tipo_cliente, $4, $5, $6::uuid, 0, 0, false)
-       returning ${columnas}`,
-      [nombre, empresa, tipo, telefono, correo, sucursalId || null]
+       values ($1, $2, $3::tipo_cliente, $4, $5, $6, $7, $8::uuid, 0, 0, false)
+       returning ${COLUMNAS_CLIENTE}`,
+      [nombre, empresa, tipo, telefono, correo, rfc, razonSocial, sucursalId || null]
     )
     revalidatePath('/clientes')
-    return {
-      cliente: {
-        ...nuevo,
-        dias_credito: numONulo(nuevo.dias_credito),
-        limite_credito: numONulo(nuevo.limite_credito),
-      },
-    }
+    return { cliente: aFila(nuevo) }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+/**
+ * Completa RFC y razón social de un cliente desde el cobro, cuando la venta
+ * lleva factura y al cliente le faltan. Sin esto, FACTURE no puede timbrar.
+ */
+export async function guardarDatosFiscalesPOS(
+  clienteId: string,
+  datos: { rfc: string; razon_social: string },
+): Promise<{ cliente?: ClienteFila; error?: string }> {
+  const rfc = normalizarRfc(datos.rfc)
+  const razonSocial = datos.razon_social.trim().replace(/\s+/g, ' ').toUpperCase() || null
+  if (!rfc || !RFC.test(rfc)) {
+    return { error: 'El RFC no tiene el formato correcto (12 caracteres para empresa, 13 para persona).' }
+  }
+  if (!razonSocial) return { error: 'Escribe la razón social, tal como viene en su constancia fiscal.' }
+
+  const { data: otro } = await uno<{ nombre: string | null }>(
+    `select coalesce(empresa, nombre) as nombre from clientes
+      where upper(btrim(rfc)) = $1 and id <> $2::uuid limit 1`,
+    [rfc, clienteId]
+  )
+  if (otro) return { error: `Ese RFC ya lo tiene otro cliente: ${otro.nombre ?? 'sin nombre'}.` }
+
+  try {
+    const [c] = await qx<ClienteFila>(
+      `update clientes set rfc = $1, razon_social = $2 where id = $3::uuid returning ${COLUMNAS_CLIENTE}`,
+      [rfc, razonSocial, clienteId]
+    )
+    if (!c) return { error: 'Ese cliente ya no existe.' }
+    revalidatePath('/clientes')
+    return { cliente: aFila(c) }
   } catch (e) {
     return { error: (e as Error).message }
   }

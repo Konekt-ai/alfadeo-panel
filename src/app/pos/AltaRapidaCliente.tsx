@@ -6,8 +6,8 @@
 // venta como "mostrador" o salir a otra pantalla, se captura lo mínimo aquí
 // y queda dado de alta en Clientes y seleccionado en la venta.
 //
-// Lo mínimo es el nombre. Empresa, tipo, teléfono y correo son opcionales;
-// los datos fiscales y el crédito se completan después, con calma.
+// Lo mínimo es el nombre. Empresa, tipo, teléfono, correo, RFC y razón
+// social son opcionales; el crédito se pacta después, con calma.
 
 import { useState, useTransition } from 'react'
 import { UserPlusIcon } from '@heroicons/react/20/solid'
@@ -35,20 +35,24 @@ export default function AltaRapidaCliente({
   const [tipo, setTipo] = useState<TipoCliente>('otro')
   const [telefono, setTelefono] = useState('')
   const [correo, setCorreo] = useState('')
+  const [rfc, setRfc] = useState('')
+  const [razonSocial, setRazonSocial] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [existente, setExistente] = useState<ClienteCreado | null>(null)
+  // Si coincidió por RFC no puede ser "otro cliente": el RFC es único.
+  const [porRfc, setPorRfc] = useState(false)
   const [guardando, startGuardar] = useTransition()
 
   const guardar = (aunqueExista = false) => {
     setError(null)
     startGuardar(async () => {
       const r = await crearClienteRapido(
-        { nombre, empresa, tipo, telefono_wa: telefono, correo },
+        { nombre, empresa, tipo, telefono_wa: telefono, correo, rfc, razon_social: razonSocial },
         sucursalId,
         aunqueExista,
       )
       if (r.error) { setError(r.error); return }
-      if (r.existente) { setExistente(r.existente); return }
+      if (r.existente) { setExistente(r.existente); setPorRfc(!!r.porRfc); return }
       if (r.cliente) alGuardar(r.cliente)
     })
   }
@@ -113,6 +117,27 @@ export default function AltaRapidaCliente({
             className={inputCls}
           />
         </div>
+        {/* Opcionales, pero sin ellos no se le puede facturar. */}
+        <div>
+          <label className={labelCls}>RFC</label>
+          <input
+            value={rfc}
+            onChange={e => { setRfc(e.target.value.toUpperCase()); setExistente(null) }}
+            autoComplete="off"
+            placeholder="Para facturar"
+            className={inputCls + ' font-mono uppercase'}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Razón social</label>
+          <input
+            value={razonSocial}
+            onChange={e => setRazonSocial(e.target.value)}
+            autoComplete="off"
+            placeholder="Como viene en su constancia"
+            className={inputCls}
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -121,7 +146,7 @@ export default function AltaRapidaCliente({
       {existente ? (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-3">
           <p className="text-base text-amber-900">
-            Ya hay un cliente registrado así:{' '}
+            {porRfc ? 'Ese RFC ya es de' : 'Ya hay un cliente registrado así:'}{' '}
             <strong>{existente.empresa ?? existente.nombre}</strong>
             {existente.empresa && existente.nombre !== existente.empresa && ` (${existente.nombre})`}.
           </p>
@@ -133,13 +158,22 @@ export default function AltaRapidaCliente({
             >
               Usar este cliente
             </button>
+            {!porRfc && (
+              <button
+                type="button"
+                onClick={() => guardar(true)}
+                disabled={guardando}
+                className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white disabled:opacity-50 transition-colors"
+              >
+                Es otro, crearlo
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => guardar(true)}
-              disabled={guardando}
-              className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-300 text-gray-700 text-base font-medium rounded-lg hover:bg-white disabled:opacity-50 transition-colors"
+              onClick={alCancelar}
+              className="flex-1 sm:flex-none px-4 py-2.5 text-gray-500 text-base font-medium rounded-lg hover:bg-white transition-colors"
             >
-              Es otro, crearlo
+              Cancelar
             </button>
           </div>
         </div>

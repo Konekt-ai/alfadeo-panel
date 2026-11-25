@@ -10,6 +10,7 @@ import { formatDate, formatDia, movimientoColor, movimientoLabel } from '@/lib/u
 import { listarUsuarios, resolverSucursal, usuarioActual } from '@/lib/usuario'
 import type { Movimiento, TipoMovimiento } from '@/lib/types'
 import NuevoMovimiento from './NuevoMovimiento'
+import { facturacion, COLUMNAS_FACTURA, JOINS_FACTURA, type MovimientoConFactura } from './facturacion'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,70 +103,6 @@ const quienFirmo = (m: Movimiento) =>
     </span>
   )
 
-// La factura del documento que originó el movimiento (punto 5): la venta
-// para las salidas por venta, la compra para las entradas de proveedor.
-// Se lee de la venta o compra, así que en cuanto se liga la factura, todos
-// sus movimientos aparecen como facturados.
-interface Facturacion {
-  /** null = el movimiento no viene de una venta ni de una compra (ajuste, traslado...). */
-  fact_doc: 'venta' | 'compra' | null
-  fact_doc_id: string | null
-  fact_doc_folio: string | null
-  fact_uuid: string | null
-  fact_serie: string | null
-  fact_folio: string | null
-  fact_fecha: string | null
-  fact_contraparte: string | null
-  fact_emisor: string | null
-}
-
-type MovimientoConFactura = Movimiento & Facturacion
-
-const EMISOR_FACTURA: Record<string, string> = {
-  aspel: 'Aspel', interno: 'este sistema', contalink: 'Contalink', otro: 'otro sistema',
-}
-
-const facturacion = (m: MovimientoConFactura) => {
-  if (!m.fact_doc) return <span className="text-sm text-gray-300">—</span>
-
-  const documento = (
-    <a href={`/${m.fact_doc === 'venta' ? 'ventas' : 'compras'}/${m.fact_doc_id}`}
-      className="text-[#003366] hover:underline">
-      {m.fact_doc === 'venta' ? 'Venta' : 'Compra'} {m.fact_doc_folio ?? ''}
-    </a>
-  )
-
-  if (!m.fact_uuid) {
-    return (
-      <div className="text-sm">
-        <span className="inline-block font-semibold px-2.5 py-1 rounded-md whitespace-nowrap bg-amber-100 text-amber-800">
-          No facturado
-        </span>
-        <div className="text-gray-500 mt-1">{documento}</div>
-      </div>
-    )
-  }
-
-  const folio = [m.fact_serie, m.fact_folio].filter(Boolean).join('-')
-  return (
-    <div className="text-sm">
-      <span className="inline-block font-semibold px-2.5 py-1 rounded-md whitespace-nowrap bg-emerald-100 text-emerald-800">
-        Facturado
-      </span>
-      <div className="text-gray-700 mt-1 break-words">
-        Factura {folio || <span className="font-mono">{m.fact_uuid.slice(0, 8)}…</span>}
-        {m.fact_emisor && EMISOR_FACTURA[m.fact_emisor] && (
-          <span className="text-gray-500"> · {EMISOR_FACTURA[m.fact_emisor]}</span>
-        )}
-      </div>
-      <div className="text-gray-500 break-words">
-        {[m.fact_contraparte, m.fact_fecha && formatDia(m.fact_fecha.slice(0, 10))].filter(Boolean).join(' · ')}
-      </div>
-      <div className="text-gray-500">{documento}</div>
-    </div>
-  )
-}
-
 export default async function MovimientosPage({
   searchParams,
 }: {
@@ -178,6 +115,7 @@ export default async function MovimientosPage({
     q?: string
     pagina?: string
     referencia?: string
+    factura?: string
   }>
 }) {
   const params = await searchParams
@@ -194,6 +132,9 @@ export default async function MovimientosPage({
     // Los movimientos que generó un documento concreto. Es a donde llevan los
     // enlaces "ver los movimientos de esta venta / compra / traslado".
     referencia: params.referencia || undefined,
+    // Facturado / no facturado (punto 5). Sólo hay factura en los
+    // movimientos que vienen de una venta o de una compra.
+    factura: params.factura === 'si' || params.factura === 'no' ? params.factura : undefined,
   }
 
   const pagina = Math.min(Math.max(Number(params.pagina) || 1, 1), PAGINA_MAX)
@@ -234,30 +175,20 @@ export default async function MovimientosPage({
   // El total se calcula en la misma consulta con una ventana, para no hacer
   // dos viajes ni volver a evaluar los filtros.
   // "Cargar más" acumula: la página 2 muestra los 200 más recientes.
+  // La condición de factura va DESPUÉS de pegar la venta o compra: antes no
+  // se sabe si el movimiento está facturado.
+  const filtroFactura =
+    f.factura === 'si' ? 'where coalesce(v.factura_uuid, c.factura_uuid) is not null'
+    : f.factura === 'no' ? 'where (v.id is not null or c.id is not null) and coalesce(v.factura_uuid, c.factura_uuid) is null'
+    : ''
+
   // Los filtros se aplican sobre la vista tal cual (subconsulta) y después se
-  // le pega la factura de su venta o compra. `referencia_id` es el id del
-  // documento que originó el movimiento; los uuid no se repiten entre
-  // tablas, así que no hace falta fiarse del texto de `referencia_tipo`.
+  // le pega la factura de su venta o compra (./facturacion).
   const { data: filas, error } = await sql<MovimientoConFactura & { total_filas: number }>(
-    `select m.*, count(*) over ()::int as total_filas,
-            case when v.id is not null then 'venta'
-                 when c.id is not null then 'compra' end          as fact_doc,
-            coalesce(v.id, c.id)                                   as fact_doc_id,
-            coalesce(v.folio, c.folio)                             as fact_doc_folio,
-            coalesce(v.factura_uuid, c.factura_uuid)::text         as fact_uuid,
-            coalesce(v.factura_serie, c.factura_serie)             as fact_serie,
-            coalesce(v.factura_folio, c.factura_folio)             as fact_folio,
-            case when v.id is not null then v.facturado_en::text
-                 else c.fecha::text end                            as fact_fecha,
-            case when v.id is not null
-                 then coalesce(cl.razon_social, cl.empresa, cl.nombre)
-                 else coalesce(pr.nombre, c.emisor_nombre) end     as fact_contraparte,
-            v.factura_emisor                                       as fact_emisor
+    `select m.*, count(*) over ()::int as total_filas, ${COLUMNAS_FACTURA}
        from (select * from v_movimientos ${where}) m
-       left join ventas      v  on v.id  = m.referencia_id
-       left join compras     c  on c.id  = m.referencia_id
-       left join clientes    cl on cl.id = v.cliente_id
-       left join proveedores pr on pr.id = c.proveedor_id
+       ${JOINS_FACTURA}
+      ${filtroFactura}
       order by m.created_at desc, m.id desc
       limit ${pagina * POR_PAGINA}`,
     par
@@ -298,7 +229,7 @@ export default async function MovimientosPage({
     nombresUsuario.push(f.usuario)
   }
 
-  const hayFiltros = Boolean(f.tipo || f.sucursal || f.usuario || f.desde || f.hasta || f.q || f.referencia)
+  const hayFiltros = Boolean(f.tipo || f.sucursal || f.usuario || f.desde || f.hasta || f.q || f.referencia || f.factura)
 
   const sinResultados = hayFiltros
     ? 'Ningún movimiento con estos filtros.'
@@ -358,6 +289,7 @@ export default async function MovimientosPage({
           {f.tipo && <input type="hidden" name="tipo" value={f.tipo} />}
           {f.sucursal && <input type="hidden" name="sucursal" value={f.sucursal} />}
           {f.usuario && <input type="hidden" name="usuario" value={f.usuario} />}
+          {f.factura && <input type="hidden" name="factura" value={f.factura} />}
           <input
             name="q"
             defaultValue={f.q}
@@ -445,6 +377,25 @@ export default async function MovimientosPage({
                   style={chipEstilo(activo)}
                 >
                   {s.nombre}
+                </a>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className={FILA_CHIPS}>
+          <span className={ROTULO}>Facturación</span>
+          <div className={CHIPS}>
+            {([['si', 'Facturado'], ['no', 'No facturado']] as const).map(([valor, label]) => {
+              const activo = f.factura === valor
+              return (
+                <a
+                  key={valor}
+                  href={buildUrl({ factura: activo ? undefined : valor })}
+                  className={chipCls(activo)}
+                  style={chipEstilo(activo)}
+                >
+                  {label}
                 </a>
               )
             })}

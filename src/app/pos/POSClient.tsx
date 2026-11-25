@@ -34,6 +34,7 @@ import {
   refrescarExistencias, ligarCodigoPOS,
 } from './acciones'
 import AltaRapidaCliente from './AltaRapidaCliente'
+import DatosFiscales from './DatosFiscales'
 
 // Los tipos de las acciones no se exportan; se derivan de su firma para que
 // no se puedan desincronizar.
@@ -1145,6 +1146,22 @@ export default function POSClient({
                 />
                 <span className="text-base text-gray-700">Requiere factura</span>
               </label>
+
+              {/* Para timbrar en FACTURE hace falta un cliente con RFC y razón social. */}
+              {requiereFactura && !cliente && (
+                <p className="-mt-2 text-sm text-amber-700">
+                  Para facturar, elige o agrega el cliente arriba.
+                </p>
+              )}
+              {requiereFactura && cliente && (!cliente.rfc || !cliente.razon_social) && (
+                <DatosFiscales
+                  key={cliente.id}
+                  clienteId={cliente.id}
+                  rfcInicial={cliente.rfc}
+                  razonInicial={cliente.razon_social}
+                  alGuardar={c => setCliente(c)}
+                />
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
